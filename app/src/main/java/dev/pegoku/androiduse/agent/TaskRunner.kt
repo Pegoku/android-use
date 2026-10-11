@@ -3,6 +3,7 @@ package dev.pegoku.androiduse.agent
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.util.Log
 import dev.pegoku.androiduse.Settings
 import dev.pegoku.androiduse.device.Device
 import kotlinx.coroutines.CancellationException
@@ -42,6 +43,7 @@ object TaskRunner {
     }
 
     private fun log(kind: LogKind, text: String) {
+        Log.i("AndroidUse", "$kind: $text")
         _state.update { it.copy(log = (it.log + LogLine(kind, text)).takeLast(500)) }
     }
 
