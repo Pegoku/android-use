@@ -43,13 +43,14 @@ class Agent(
     private class Screen(val text: String, val imageBase64: String, val app: String?) : Item
 
     private val history = mutableListOf<Item>()
+    private val instructions = instructions()
 
     suspend fun run(task: String): AgentResult {
         history += Raw(userMessage("Task: $task"))
         var nudges = 0
         for (step in 1..maxSteps) {
             history += observe(step)
-            val output = client.respond(model, effort, instructions(), render(), Tools.definitions)
+            val output = client.respond(model, effort, instructions, render(), Tools.definitions)
             output.forEach { history += Raw(it) }
 
             output.filter { it.type == "reasoning" }.forEach { item ->

@@ -28,6 +28,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.SocketTimeoutException
 import java.security.MessageDigest
@@ -82,7 +83,11 @@ object CodexAuth {
 
     /** A pending browser login: open [url], then await [complete]. */
     class Login internal constructor(val url: String, private val verifier: String, private val state: String) {
-        private val server = ServerSocket(PORT, 8, InetAddress.getByName("127.0.0.1")).apply { soTimeout = 1000 }
+        private val server = ServerSocket().apply {
+            reuseAddress = true
+            bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), PORT))
+            soTimeout = 1000
+        }
         @Volatile private var cancelled = false
 
         fun cancel() {
@@ -159,7 +164,10 @@ object CodexAuth {
         }
     }
 
+    private var activeLogin: Login? = null
+
     fun startLogin(): Login {
+        activeLogin?.cancel()
         val random = SecureRandom()
         val verifier = base64Url(ByteArray(64).also(random::nextBytes))
         val challenge = base64Url(MessageDigest.getInstance("SHA-256").digest(verifier.toByteArray()))
@@ -176,7 +184,7 @@ object CodexAuth {
             .appendQueryParameter("state", state)
             .appendQueryParameter("originator", "codex_cli_rs")
             .build().toString()
-        return Login(url, verifier, state)
+        return Login(url, verifier, state).also { activeLogin = it }
     }
 
     /** Imports the contents of a desktop `~/.codex/auth.json`. */
