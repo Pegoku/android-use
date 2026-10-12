@@ -117,6 +117,8 @@ private fun Screen(sharedTask: androidx.compose.runtime.MutableState<String?>) {
     }
 
     val ready = shizuku == ShizukuState.Ready && tokens != null
+    // Settings are plain prefs; re-read them whenever the settings card closes.
+    val reportChat = remember(showSettings) { settings.reportChat.takeIf { settings.reportEnabled && it.isNotBlank() } }
     val listState = rememberLazyListState()
     LaunchedEffect(run.log.size) { if (run.log.isNotEmpty()) listState.animateScrollToItem(run.log.size + HEADER_ITEMS - 1) }
 
@@ -157,9 +159,9 @@ private fun Screen(sharedTask: androidx.compose.runtime.MutableState<String?>) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    if (settings.reportEnabled) {
+                    if (reportChat != null) {
                         Text(
-                            "Result will be reported to WhatsApp chat \"${settings.reportChat}\".",
+                            "Result will be reported to WhatsApp chat \"$reportChat\".",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
