@@ -1,5 +1,7 @@
 package dev.pegoku.androiduse.agent
 
+import dev.pegoku.androiduse.device.Device
+
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -133,7 +135,7 @@ object Tools {
             Param("text", "string", "Text to type. May be empty when only clearing."),
             Param("element", optInt, "Editable element to tap first, or null to type into the currently focused field."),
             Param("clear_first", "boolean", "Delete the field's existing content before typing."),
-            Param("submit", "boolean", "Press Enter after typing (e.g. to search)."),
+            Param("submit", "boolean", "Press Enter after typing, for search boxes only. Never use it to send a chat message; tap Send instead."),
         ))
         add(fillForm)
         add(tool(
@@ -179,6 +181,19 @@ object Tools {
             "Open a URI with an ACTION_VIEW intent (web URL, deep link, tel:, geo:, etc.).",
             Param("uri", "string", "The URI to open."),
             Param("package", optString, "Package to open it with, or null for the default handler."),
+        ))
+        add(tool(
+            "open_settings",
+            "Jump straight to a Settings page (much faster than navigating menus). about_phone shows the Android version, model, build number and more.",
+            Param("page", "string", "Settings page.", Device.SETTINGS_PAGES.keys.toList()),
+            Param("package", optString, "App package, required for app_details and app_notifications; otherwise null."),
+        ))
+        add(tool(
+            "compose_sms",
+            "Open the SMS app with the recipient and message already filled in. Then tap the Send button and confirm the message was sent.",
+            Param("number", "string", "Recipient phone number."),
+            Param("text", "string", "Message text."),
+            Param("package", optString, "SMS app package, or null for the default."),
         ))
         add(tool(
             "compose_email",

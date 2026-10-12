@@ -167,6 +167,8 @@ class Agent(
                 .ifEmpty { "No matching apps." }
         }
         "open_uri" -> device.openUri(a.str("uri") ?: error("uri is required"), a.str("package"))
+        "open_settings" -> device.openSettings(a.str("page") ?: error("page is required"), a.str("package"))
+        "compose_sms" -> device.composeSms(a.str("number") ?: error("number is required"), a.str("text").orEmpty(), a.str("package"))
         "compose_email" -> device.composeEmail(a.str("to").orEmpty(), a.str("subject").orEmpty(), a.str("body").orEmpty(), a.str("package"))
         "wait" -> {
             val seconds = (a.num("seconds") ?: 3.0).coerceIn(0.5, 30.0)
@@ -296,7 +298,9 @@ class Agent(
             - Check each new screen to confirm your actions had the intended effect before moving on. If something did not work, try another approach (scroll, search, back, wait for loading).
             - To type, focus the field with type_text's element argument. Dismiss pop-ups, permission prompts and onboarding screens only in the way that least changes the user's settings.
             - When you find information you need later (values, names, numbers), call save_note with the exact value.
-            - For email, compose_email opens a prefilled draft; then press the app's Send button and confirm the draft was sent. Never leave a requested message unsent.
+            - Plan the most direct route before acting and don't explore: open_settings for any Settings page (e.g. about_phone for the Android version and security update), open_uri for known web pages and deep links, an app's search box rather than browsing menus. Once you have reached the screen with the information, read it there instead of going back and forth.
+            - For SMS use compose_sms, for email compose_email: they open a prefilled draft; then tap the app's Send button and confirm it was sent. Never leave a requested message unsent.
+            - In chat and messaging apps never press Enter or use submit=true to send: Enter only adds a new line. Always tap the Send button.
             - In messaging apps, open the exact chat requested (use the app's search when it is not visible), type the message, tap Send, and confirm it appears in the conversation.
             - Stay within the task: don't buy anything, delete data, change settings or contact people unless the task asks for it. If you hit a login wall, CAPTCHA, payment or a decision only the owner can make, stop.
             - Do not interact with "Android Use" (this automation app) or its notification.
@@ -305,7 +309,7 @@ class Agent(
     }
 
     private companion object {
-        val SLOW_ACTIONS = setOf("launch_app", "open_uri", "compose_email")
+        val SLOW_ACTIONS = setOf("launch_app", "open_uri", "open_settings", "compose_sms", "compose_email")
         val PASSIVE_ACTIONS = setOf("save_note", "list_apps", "wait")
     }
 

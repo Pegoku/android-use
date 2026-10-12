@@ -309,7 +309,9 @@ class Device(private val context: Context) {
         return "Scrolled $direction $maxSwipes times without finding \"$query\""
     }
 
-    suspend fun typeText(text: String, clearFirst: Boolean, elementId: Int?, submit: Boolean): String {
+    suspend fun typeText(rawText: String, clearFirst: Boolean, elementId: Int?, submit: Boolean): String {
+        // A trailing newline would be typed as an extra line (e.g. in a chat box), never as "send".
+        val text = rawText.trimEnd('\n', '\r')
         val notes = mutableListOf<String>()
         if (elementId != null) {
             tapElement(elementId)
@@ -402,6 +404,29 @@ class Device(private val context: Context) {
         return if (result.ok && "Error" !in result.output) "Opened $uri" else "Failed to open $uri: ${result.output.take(300)}"
     }
 
+    /** Opens a Settings page directly through its intent action instead of navigating menus. */
+    suspend fun openSettings(page: String, packageName: String?): String {
+        val action = SETTINGS_PAGES[page] ?: return "Unknown settings page \"$page\". Known: ${SETTINGS_PAGES.keys.joinToString()}"
+        val pkg = packageName?.takeIf { it.isNotBlank() }
+        val extra = when {
+            page == "app_details" -> " -d ${quote("package:${pkg ?: return "app_details needs a package"}")}"
+            page == "app_notifications" -> " --es android.provider.extra.APP_PACKAGE ${quote(pkg ?: return "app_notifications needs a package")}"
+            else -> ""
+        }
+        val result = shell("am start -a $action$extra")
+        return if (result.ok && "Error" !in result.output) "Opened Settings: $page" else "Failed to open $page settings: ${result.output.take(300)}"
+    }
+
+    /** Opens the SMS app with the recipient and text already filled in; the Send button still has to be tapped. */
+    suspend fun composeSms(number: String, text: String, packageName: String?): String {
+        val pkg = packageName?.takeIf { it.isNotBlank() }?.let { " -p ${quote(it)}" }.orEmpty()
+        val uri = "smsto:" + number.filter { it.isDigit() || it == '+' }
+        val result = shell("am start -a android.intent.action.SENDTO -d ${quote(uri)} --es sms_body ${quote(text)}$pkg")
+        return if (result.ok && "Error" !in result.output) {
+            "Opened a message to $number with the text filled in. Check it on screen, then tap the Send button (do not press Enter)."
+        } else "Failed to open the SMS composer: ${result.output.take(300)}"
+    }
+
     suspend fun composeEmail(to: String, subject: String, body: String, packageName: String?): String {
         val uri = "mailto:" + Uri.encode(to, "@,") + "?subject=" + Uri.encode(subject) + "&body=" + Uri.encode(body)
         val pkg = packageName?.takeIf { it.isNotBlank() }?.let { " -p ${quote(it)}" }.orEmpty()
@@ -416,6 +441,34 @@ class Device(private val context: Context) {
 
     companion object {
         private const val MAX_SHOT_EDGE = 1280
+
+        val SETTINGS_PAGES = linkedMapOf(
+            "main" to "android.settings.SETTINGS",
+            "about_phone" to "android.settings.DEVICE_INFO_SETTINGS",
+            "wifi" to "android.settings.WIFI_SETTINGS",
+            "bluetooth" to "android.settings.BLUETOOTH_SETTINGS",
+            "network" to "android.settings.WIRELESS_SETTINGS",
+            "airplane_mode" to "android.settings.AIRPLANE_MODE_SETTINGS",
+            "data_usage" to "android.settings.DATA_USAGE_SETTINGS",
+            "display" to "android.settings.DISPLAY_SETTINGS",
+            "sound" to "android.settings.SOUND_SETTINGS",
+            "battery" to "android.intent.action.POWER_USAGE_SUMMARY",
+            "storage" to "android.settings.INTERNAL_STORAGE_SETTINGS",
+            "apps" to "android.settings.APPLICATION_SETTINGS",
+            "app_details" to "android.settings.APPLICATION_DETAILS_SETTINGS",
+            "app_notifications" to "android.settings.APP_NOTIFICATION_SETTINGS",
+            "default_apps" to "android.settings.MANAGE_DEFAULT_APPS_SETTINGS",
+            "location" to "android.settings.LOCATION_SOURCE_SETTINGS",
+            "security" to "android.settings.SECURITY_SETTINGS",
+            "privacy" to "android.settings.PRIVACY_SETTINGS",
+            "accounts" to "android.settings.SYNC_SETTINGS",
+            "date_time" to "android.settings.DATE_SETTINGS",
+            "language" to "android.settings.LOCALE_SETTINGS",
+            "accessibility" to "android.settings.ACCESSIBILITY_SETTINGS",
+            "developer_options" to "android.settings.APPLICATION_DEVELOPMENT_SETTINGS",
+            "nfc" to "android.settings.NFC_SETTINGS",
+            "vpn" to "android.settings.VPN_SETTINGS",
+        )
 
         private val KEYS = mapOf(
             "back" to "KEYCODE_BACK",
