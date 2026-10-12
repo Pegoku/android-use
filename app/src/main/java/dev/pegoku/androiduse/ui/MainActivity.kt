@@ -202,6 +202,21 @@ private fun Screen(sharedTask: androidx.compose.runtime.MutableState<String?>) {
 
 private const val HEADER_ITEMS = 7
 
+/**
+ * Opens [url] in the user's browser explicitly. A plain VIEW intent for auth.openai.com is captured by
+ * the ChatGPT app (it claims those links), which shows "Your session has ended" instead of the login page.
+ */
+private fun openInBrowser(context: android.content.Context, url: String) {
+    val pm = context.packageManager
+    val probe = Intent(Intent.ACTION_VIEW, Uri.parse("https://example.com")).addCategory(Intent.CATEGORY_BROWSABLE)
+    val browsers = pm.queryIntentActivities(probe, 0).map { it.activityInfo.packageName }.distinct()
+    val default = pm.resolveActivity(probe, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName
+    val browser = default?.takeIf { it in browsers } ?: browsers.firstOrNull()
+    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE)
+    if (browser != null) intent.setPackage(browser)
+    context.startActivity(intent)
+}
+
 private const val POWER_LONG_PRESS = "power_button_long_press"
 
 private fun powerOpensAssistant(context: android.content.Context): Boolean =
@@ -363,7 +378,21 @@ private fun SetupCard(shizuku: ShizukuState, tokens: dev.pegoku.androiduse.auth.
                 OutlinedButton(onClick = CodexAuth::signOut) { Text("Sign out") }
             } else if (login != null) {
                 Text("Finish signing in in the browser…")
-                OutlinedButton(onClick = { login?.cancel() }) { Text("Cancel") }
+                Text(
+                    "If you see \"Your session has ended\" or the ChatGPT app opens instead, copy the link and open it in your browser.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = {
+                        login?.url?.let { url ->
+                            context.getSystemService(android.content.ClipboardManager::class.java)
+                                .setPrimaryClip(android.content.ClipData.newPlainText("Sign-in link", url))
+                            authMessage = "Link copied. Paste it into your browser's address bar."
+                        }
+                    }) { Text("Copy link") }
+                    OutlinedButton(onClick = { login?.cancel() }) { Text("Cancel") }
+                }
             } else {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilledTonalButton(onClick = {
@@ -373,7 +402,7 @@ private fun SetupCard(shizuku: ShizukuState, tokens: dev.pegoku.androiduse.auth.
                         }
                         login = pending
                         authMessage = null
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(pending.url)))
+                        openInBrowser(context, pending.url)
                         scope.launch {
                             authMessage = runCatching { pending.complete(); "Signed in." }.getOrElse { it.message }
                             login = null
