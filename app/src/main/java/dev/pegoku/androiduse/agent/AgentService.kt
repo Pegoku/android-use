@@ -11,12 +11,16 @@ import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import dev.pegoku.androiduse.R
+import dev.pegoku.androiduse.llm.CodexUsage
+import dev.pegoku.androiduse.llm.CodexUsageStore
 import dev.pegoku.androiduse.ui.MainActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import dev.pegoku.androiduse.shell.ShizukuShell
@@ -45,18 +49,27 @@ class AgentService : Service() {
         if (task == null || TaskRunner.job?.isActive == true) return START_NOT_STICKY
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(ID_RUN, progress("Starting…"), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            startForeground(ID_RUN, liveNotification(TaskRunner.state.value, null, CodexUsageStore.usage.value), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         } else {
-            startForeground(ID_RUN, progress("Starting…"))
+            startForeground(ID_RUN, liveNotification(TaskRunner.state.value, null, CodexUsageStore.usage.value))
         }
         @Suppress("DEPRECATION")
         wakeLock = getSystemService(PowerManager::class.java)
             .newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP, "android-use:task")
             .apply { acquire(60 * 60_000L) }
 
+        scope.launch { CodexUsageStore.refresh() }
+        // Keep the live notification in step with the task, at most a couple of updates per second.
+        val updates = scope.launch {
+            combine(TaskRunner.state, Approvals.current, CodexUsageStore.usage) { state, approval, usage -> Triple(state, approval, usage) }
+                .sample(500)
+                .collect { (state, approval, usage) ->
+                    if (state.running) notifications.notify(ID_RUN, liveNotification(state, approval, usage))
+                }
+        }
         TaskRunner.job = scope.launch {
             try {
-                val result = TaskRunner.execute(this@AgentService, task, intent.getBooleanExtra(EXTRA_FROM_HOME, true)) { notifications.notify(ID_RUN, progress(it)) }
+                val result = TaskRunner.execute(this@AgentService, task, intent.getBooleanExtra(EXTRA_FROM_HOME, true))
                 notifications.notify(ID_RESULT, resultNotification(if (result.success) "Task done" else "Task failed", result.summary))
             } finally {
                 withContext(NonCancellable) {
@@ -64,6 +77,7 @@ class AgentService : Service() {
                     runCatching { TaskRunner.markFinished() }
                     runCatching { ShizukuShell.release() }
                 }
+                updates.cancel()
                 wakeLock?.takeIf { it.isHeld }?.release()
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
@@ -81,19 +95,11 @@ class AgentService : Service() {
         this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE,
     )
 
-    private fun progress(text: String): Notification = Notification.Builder(this, CHANNEL_RUN)
-        .setSmallIcon(R.drawable.ic_notification)
-        .setContentTitle("Android Use is working")
-        .setContentText(text)
-        .setOngoing(true)
-        .setContentIntent(openApp())
-        .addAction(
-            Notification.Action.Builder(
-                null, "Stop",
-                PendingIntent.getService(this, 1, Intent(this, AgentService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE),
-            ).build(),
+    private fun liveNotification(state: RunState, approval: ApprovalRequest?, usage: CodexUsage?): Notification =
+        LiveNotification.build(
+            this, CHANNEL_RUN, state, approval, usage,
+            PendingIntent.getService(this, 1, Intent(this, AgentService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE),
         )
-        .build()
 
     private fun resultNotification(title: String, text: String): Notification = Notification.Builder(this, CHANNEL_RESULT)
         .setSmallIcon(R.drawable.ic_notification)

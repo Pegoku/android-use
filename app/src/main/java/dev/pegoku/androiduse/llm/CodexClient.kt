@@ -111,6 +111,8 @@ class CodexClient(private val sessionId: String = UUID.randomUUID().toString()) 
     }
 
     private fun readStream(response: okhttp3.Response, onTextDelta: ((String?) -> Unit)?): List<JsonObject> = response.use {
+        // Every response (including 429s) reports the plan's remaining usage.
+        CodexUsageStore.updateFromHeaders(response.headers)
         if (response.code == 401) throw UnauthorizedException()
         if (!response.isSuccessful) {
             val text = response.body.string().take(800)

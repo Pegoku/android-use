@@ -72,6 +72,12 @@ fast model is always double-checked. Clear the fast model field to use the main 
 
 You can also share text from any app to Android Use to prefill a task.
 
+While a task runs, its progress shows in an ongoing notification. On Android 16 this becomes a
+**Live Update**: a pill in the status bar shows the step and how much Codex usage is left (for
+example `S4 · 70%`). Tap the pill to expand it: you see the task, the current action, a thumbnail
+of the screen, both usage limits, and a **Stop** button. The app's Codex card shows the 5-hour and
+weekly limits with their reset times. The app follows the system's light or dark theme.
+
 The phone must be unlocked while a task runs. The agent presses Home, then works in the foreground.
 Tap **Stop** in the app or in the notification to abort.
 

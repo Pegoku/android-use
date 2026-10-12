@@ -33,6 +33,8 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LinearProgressIndicator
+import dev.pegoku.androiduse.llm.CodexUsageStore
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -383,7 +385,11 @@ private fun SetupCard(shizuku: ShizukuState, tokens: dev.pegoku.androiduse.auth.
             Text("Codex (ChatGPT subscription)", fontWeight = FontWeight.Bold)
             if (tokens != null) {
                 Text("Signed in as ${tokens.email ?: "unknown"}${tokens.plan?.let { " · $it plan" }.orEmpty()}")
-                OutlinedButton(onClick = CodexAuth::signOut) { Text("Sign out") }
+                UsageSection()
+                OutlinedButton(onClick = {
+                    CodexAuth.signOut()
+                    CodexUsageStore.clear()
+                }) { Text("Sign out") }
             } else if (login != null) {
                 Text("Finish signing in in the browser…")
                 Text(
@@ -427,6 +433,58 @@ private fun SetupCard(shizuku: ShizukuState, tokens: dev.pegoku.androiduse.auth.
                 )
             }
             authMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        }
+    }
+}
+
+/** Remaining ChatGPT-plan usage for Codex, one bar per rate-limit window. */
+@Composable
+private fun UsageSection() {
+    val usage by CodexUsageStore.usage.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+    var refreshing by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { CodexUsageStore.refresh() }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Codex usage left", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+            TextButton(onClick = {
+                scope.launch {
+                    refreshing = true
+                    CodexUsageStore.refresh()
+                    refreshing = false
+                }
+            }, enabled = !refreshing) { Text(if (refreshing) "Refreshing…" else "Refresh") }
+        }
+        val current = usage
+        if (current == null) {
+            Text("Not loaded yet.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+            listOfNotNull(current.primary, current.secondary).forEach { window ->
+                val low = window.leftPercent <= 15
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row {
+                        Text(
+                            "${window.label}: ${window.leftPercent}% left",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (low) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(
+                            "resets in ${window.resetsIn()}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    LinearProgressIndicator(
+                        progress = { window.leftPercent / 100f },
+                        modifier = Modifier.fillMaxWidth(),
+                        color = if (low) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+            if (current.limitReached) {
+                Text("Limit reached: tasks will fail until it resets.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
         }
     }
 }

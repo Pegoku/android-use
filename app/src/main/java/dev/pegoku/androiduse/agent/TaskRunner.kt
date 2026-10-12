@@ -23,6 +23,9 @@ data class RunState(
     val log: List<LogLine> = emptyList(),
     val screen: Bitmap? = null,
     val result: AgentResult? = null,
+    /** Actions taken so far and the most recent one, for the live notification. */
+    val steps: Int = 0,
+    val lastAction: String? = null,
 )
 
 /** Process-wide holder for the current task, shared between [AgentService] and the UI. */
@@ -57,13 +60,20 @@ object TaskRunner {
 
     private fun log(kind: LogKind, text: String) {
         Log.i("AndroidUse", "$kind: $text")
-        _state.update { it.copy(log = (it.log + LogLine(kind, text)).takeLast(500)) }
+        _state.update {
+            val action = kind == LogKind.Action
+            it.copy(
+                log = (it.log + LogLine(kind, text)).takeLast(500),
+                steps = if (action) it.steps + 1 else it.steps,
+                lastAction = if (action) text else it.lastAction,
+            )
+        }
     }
 
     private fun phase(text: String) = _state.update { it.copy(phase = text) }
 
     /** Runs the task and the optional WhatsApp report. Called from the service's coroutine. */
-    suspend fun execute(context: Context, task: String, fromHome: Boolean, onProgress: (String) -> Unit): AgentResult {
+    suspend fun execute(context: Context, task: String, fromHome: Boolean): AgentResult {
         val settings = Settings(context)
         val device = Device(context)
         fun agent(maxSteps: Int, task: String) = Agent(
@@ -72,10 +82,7 @@ object TaskRunner {
             fastModel = settings.fastModel.takeIf { it.isNotBlank() && it != settings.model },
             effort = settings.effort,
             maxSteps = maxSteps,
-            log = { kind, text ->
-                log(kind, text)
-                if (kind == LogKind.Action) onProgress(text)
-            },
+            log = ::log,
             onScreen = { obs -> _state.update { it.copy(screen = obs.bitmap) } },
             guard = Guard(
                 context = context,
