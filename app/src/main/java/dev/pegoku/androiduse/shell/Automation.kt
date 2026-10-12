@@ -124,7 +124,8 @@ internal class Automation {
     fun tap(x: Int, y: Int, durationMs: Long): Boolean {
         val down = SystemClock.uptimeMillis()
         if (!touch(MotionEvent.ACTION_DOWN, down, down, x, y)) return false
-        if (durationMs > 0) SystemClock.sleep(durationMs)
+        // A real finger stays down for a moment; zero-length taps get dropped by some views under load.
+        SystemClock.sleep(if (durationMs > 0) durationMs else 40)
         return touch(MotionEvent.ACTION_UP, down, SystemClock.uptimeMillis(), x, y)
     }
 
