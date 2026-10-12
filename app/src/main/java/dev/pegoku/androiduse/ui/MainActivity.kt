@@ -112,14 +112,17 @@ private fun Screen(sharedTask: androidx.compose.runtime.MutableState<String?>) {
     var task by remember { mutableStateOf("") }
     var showSettings by remember { mutableStateOf(false) }
 
-    LaunchedEffect(sharedTask.value) {
-        sharedTask.value?.let { task = it; sharedTask.value = null }
-    }
-
     val ready = shizuku == ShizukuState.Ready && tokens != null
     // Settings are plain prefs; re-read them whenever the settings card closes.
     val reportChat = remember(showSettings) { settings.reportChat.takeIf { settings.reportEnabled && it.isNotBlank() } }
     val listState = rememberLazyListState()
+    LaunchedEffect(sharedTask.value) {
+        sharedTask.value?.let {
+            task = it
+            sharedTask.value = null
+            listState.scrollToItem(0)
+        }
+    }
     LaunchedEffect(run.log.size) { if (run.log.isNotEmpty()) listState.animateScrollToItem(run.log.size + HEADER_ITEMS - 1) }
 
     LazyColumn(
