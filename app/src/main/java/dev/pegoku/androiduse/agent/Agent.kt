@@ -105,7 +105,9 @@ class Agent(
                             val summary = args["summary"]?.jsonPrimitive?.content.orEmpty()
                             if (stepModel == fastModel) {
                                 // Only the careful model may end a task; the fast one tends to declare victory early.
-                                escalate("double-checking the result", turns = 1)
+                                // Stay with the careful model until the end: handing back after one turn lets the fast
+                                // model declare victory again and again while the careful one keeps re-verifying.
+                                escalate("double-checking the result", turns = Int.MAX_VALUE)
                                 "Before finishing, verify on the current screen that every part of the task was really done, then call finish again."
                             } else {
                                 return AgentResult(success, summary)
@@ -386,6 +388,7 @@ class Agent(
             - In messaging apps, open the exact chat requested (use the app's search when it is not visible), type the message, tap Send, and confirm it appears in the conversation.
             - Stay within the task: don't buy anything, delete data, change settings or contact people unless the task asks for it. If you hit a login wall, CAPTCHA, payment or a decision only the owner can make, stop.
             - Do not interact with "Android Use" (this automation app) or its notification.
+            - When verifying, make sure what you see was produced during this task (e.g. a message's timestamp is from just now) and isn't left over from earlier. If you haven't actually done a step, do it; never report something as done because similar content already exists.
             - Finish with finish(success, summary). The summary must state the concrete result (e.g. the value found and who it was sent to) or exactly why it failed. Only report success when you verified it.
         """.trimIndent()
     }
