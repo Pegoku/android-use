@@ -9,8 +9,9 @@ until the task is done. When it finishes, it messages **"Task done: …"** or **
 WhatsApp chat (default: the `Notes` group).
 
 - **Device control: [Shizuku](https://shizuku.rikka.app/).** A Shizuku user service runs with the shell
-  (adb) uid and executes `screencap`, `uiautomator dump`, `input`, and `am start`. No root and no
-  accessibility service needed.
+  (adb) uid. It holds a UiAutomation connection for fast UI-tree reads, taps, swipes and text entry,
+  and uses `screencap` and `am start` for screenshots and launches. No root and no accessibility
+  service needed.
 - **Model: your ChatGPT/Codex subscription.** The app signs in with the same OAuth flow as `codex login`
   and calls the Codex Responses endpoint (`chatgpt.com/backend-api/codex/responses`), so usage counts
   against your plan, not an API key.
@@ -25,8 +26,15 @@ WhatsApp chat (default: the `Notes` group).
      `http://localhost:1455/auth/callback` redirect itself.
      Alternatively, **Import auth.json** from a desktop `~/.codex/auth.json`. Because refresh tokens rotate,
      the phone and the desktop may then sign each other out, so signing in on the phone is preferred.
-4. Optional: in **Settings**, pick the model and reasoning effort, the step limit, and the WhatsApp
+4. Optional: in **Settings**, pick the models and reasoning effort, the step limit, and the WhatsApp
    report chat.
+
+## Models
+
+Routine steps run on a **fast model** (default `gpt-6-luna`, about 2 s per turn). The **main model**
+(default `gpt-6.1-sol`, about 5 s per turn) takes over for a few turns when an action fails, the agent
+repeats itself, or a turn changes nothing. Only the main model can end a task, so a "done" from the
+fast model is always double-checked. Clear the fast model field to use the main model throughout.
 
 You can also share text from any app to Android Use to prefill a task.
 
@@ -44,11 +52,21 @@ Tap **Stop** in the app or in the notification to abort.
 | Observe → act loop, tools, prompt | `agent/Agent.kt`, `agent/Tools.kt` |
 | Task + WhatsApp report orchestration | `agent/TaskRunner.kt`, `agent/AgentService.kt` |
 
-On each step, the model gets a downscaled screenshot plus a numbered list of on-screen elements,
-then calls one tool:
+On each turn, the model gets a downscaled screenshot plus a numbered list of on-screen elements
+(including popups and dialogs), then calls one or more tools:
 
-`tap`, `type_text`, `scroll`, `swipe`, `press_key`, `launch_app`, `list_apps`, `open_uri`,
-`compose_email`, `wait`, `save_note`, `finish`
+`batch`, `tap`, `type_text`, `fill_form`, `scroll`, `scroll_to`, `swipe`, `press_key`, `launch_app`,
+`list_apps`, `open_uri`, `compose_email`, `wait`, `save_note`, `finish`
 
-Only the latest screenshot is sent in full, which keeps long tasks cheap. Text with non-ASCII
-characters is typed by pasting from the clipboard.
+The tools are designed to save model round trips:
+
+- `batch` runs several actions in one turn. Element ids are re-mapped if the screen shifts, and the
+  batch stops at the first failure.
+- `fill_form` fills several fields in one call.
+- `scroll_to` keeps swiping until the target text is on screen.
+
+After each turn, the agent waits for the UI to settle rather than sleeping for a fixed time.
+
+Only the latest screenshot is sent in full, which keeps long tasks cheap. Text is set directly on
+the focused field through accessibility. If that fails, the agent falls back to `input text` or a
+clipboard paste.
