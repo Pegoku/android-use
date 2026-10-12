@@ -202,6 +202,11 @@ private fun Screen(sharedTask: androidx.compose.runtime.MutableState<String?>) {
 
 private const val HEADER_ITEMS = 7
 
+private const val POWER_LONG_PRESS = "power_button_long_press"
+
+private fun powerOpensAssistant(context: android.content.Context): Boolean =
+    android.provider.Settings.Global.getInt(context.contentResolver, POWER_LONG_PRESS, 1) == 5
+
 private fun isDefaultAssistant(context: android.content.Context): Boolean =
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
         context.getSystemService(android.app.role.RoleManager::class.java).isRoleHeld(android.app.role.RoleManager.ROLE_ASSISTANT)
@@ -214,10 +219,14 @@ private fun AssistantCard(shizuku: ShizukuState) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var isDefault by remember { mutableStateOf(isDefaultAssistant(context)) }
+    var powerOpens by remember { mutableStateOf(powerOpensAssistant(context)) }
     var message by remember { mutableStateOf<String?>(null) }
     val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current
     LaunchedEffect(lifecycle) {
-        lifecycle.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) { isDefault = isDefaultAssistant(context) }
+        lifecycle.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
+            isDefault = isDefaultAssistant(context)
+            powerOpens = powerOpensAssistant(context)
+        }
     }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -248,6 +257,25 @@ private fun AssistantCard(shizuku: ShizukuState) {
                 }
                 OutlinedButton(onClick = { context.startActivity(AssistantActivity.intent(context).putExtra(AssistantActivity.EXTRA_RESUMED, false)) }) {
                     Text("Try it")
+                }
+            }
+            if (isDefault && shizuku == ShizukuState.Ready) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Open with long-press power")
+                        Text(
+                            "Instead of the power menu. Some phone makers use their own setting for this.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(checked = powerOpens, onCheckedChange = { enable ->
+                        scope.launch {
+                            // AOSP/Pixel: 5 = digital assistant, 1 = power menu.
+                            runCatching { ShizukuShell.run("settings put global $POWER_LONG_PRESS ${if (enable) 5 else 1}") }
+                            powerOpens = powerOpensAssistant(context)
+                        }
+                    })
                 }
             }
             message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
