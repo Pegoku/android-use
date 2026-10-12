@@ -41,6 +41,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -87,7 +90,12 @@ class MainActivity : ComponentActivity() {
         }
         handleShare(intent)
         setContent {
-            val colors = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) dynamicLightColorScheme(this) else lightColorScheme()
+            val dark = isSystemInDarkTheme()
+            val colors = when {
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> if (dark) dynamicDarkColorScheme(this) else dynamicLightColorScheme(this)
+                dark -> darkColorScheme()
+                else -> lightColorScheme()
+            }
             MaterialTheme(colorScheme = colors) {
                 Surface(Modifier.fillMaxSize()) { Screen(sharedTask) }
             }
@@ -323,7 +331,7 @@ private fun LogRow(line: LogLine) {
         LogKind.Action -> "▶" to MaterialTheme.colorScheme.primary
         LogKind.Result -> "↳" to MaterialTheme.colorScheme.onSurfaceVariant
         LogKind.Error -> "✗" to MaterialTheme.colorScheme.error
-        LogKind.Done -> "✓" to Color(0xFF1B7F3B)
+        LogKind.Done -> "✓" to if (isSystemInDarkTheme()) Color(0xFF81C995) else Color(0xFF1B7F3B)
     }
     Row {
         Text(prefix, color = color, modifier = Modifier.width(22.dp))
