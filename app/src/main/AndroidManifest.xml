@@ -49,6 +49,10 @@
                 android:value="Runs a user-requested on-device automation task" />
         </service>
 
+        <receiver
+            android:name=".agent.Approvals$Receiver"
+            android:exported="false" />
+
         <provider
             android:name="rikka.shizuku.ShizukuProvider"
             android:authorities="${applicationId}.shizuku"

@@ -60,6 +60,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.pegoku.androiduse.Settings
+import dev.pegoku.androiduse.agent.ApprovalRequest
+import dev.pegoku.androiduse.agent.Approvals
+import dev.pegoku.androiduse.agent.Guard
 import dev.pegoku.androiduse.agent.LogKind
 import dev.pegoku.androiduse.agent.LogLine
 import dev.pegoku.androiduse.agent.TaskRunner
@@ -111,6 +114,7 @@ private fun Screen(sharedTask: androidx.compose.runtime.MutableState<String?>) {
     val run by TaskRunner.state.collectAsStateWithLifecycle()
     val shizuku by ShizukuShell.state.collectAsStateWithLifecycle()
     val tokens by CodexAuth.tokens.collectAsStateWithLifecycle()
+    val approval by Approvals.current.collectAsStateWithLifecycle()
     var task by remember { mutableStateOf("") }
     var showSettings by remember { mutableStateOf(false) }
 
@@ -138,6 +142,7 @@ private fun Screen(sharedTask: androidx.compose.runtime.MutableState<String?>) {
                 TextButton(onClick = { showSettings = !showSettings }) { Text(if (showSettings) "Close settings" else "Settings") }
             }
         }
+        item { approval?.let { ApprovalCard(it) } }
         item { SetupCard(shizuku, tokens) }
         item { if (showSettings) SettingsCard(settings) }
         item {
@@ -192,7 +197,24 @@ private fun Screen(sharedTask: androidx.compose.runtime.MutableState<String?>) {
     }
 }
 
-private const val HEADER_ITEMS = 5
+private const val HEADER_ITEMS = 6
+
+@Composable
+private fun ApprovalCard(request: ApprovalRequest) {
+    Card(
+        Modifier.fillMaxWidth(),
+        colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Approval needed", fontWeight = FontWeight.Bold)
+            Text(request.detail, style = MaterialTheme.typography.bodyMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { Approvals.answer(request.id, true) }) { Text("Approve") }
+                OutlinedButton(onClick = { Approvals.answer(request.id, false) }) { Text("Deny") }
+            }
+        }
+    }
+}
 
 @Composable
 private fun LogRow(line: LogLine) {
@@ -295,6 +317,9 @@ private fun SettingsCard(settings: Settings) {
     var effort by remember { mutableStateOf(settings.effort) }
     var maxSteps by remember { mutableStateOf(settings.maxSteps.toString()) }
     var reportEnabled by remember { mutableStateOf(settings.reportEnabled) }
+    var approvalMode by remember { mutableStateOf(settings.approvalMode) }
+    var reviewerModel by remember { mutableStateOf(settings.reviewerModel) }
+    var shellEnabled by remember { mutableStateOf(settings.shellEnabled) }
     var reportChat by remember { mutableStateOf(settings.reportChat) }
     var models by remember { mutableStateOf<List<String>>(emptyList()) }
     var menuOpen by remember { mutableStateOf(false) }
@@ -352,6 +377,46 @@ private fun SettingsCard(settings: Settings) {
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth(),
             )
+            Text("Sensitive actions", style = MaterialTheme.typography.labelLarge)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = approvalMode == Guard.MODE_AUTO,
+                    onClick = { approvalMode = Guard.MODE_AUTO; settings.approvalMode = Guard.MODE_AUTO },
+                    label = { Text("Auto-review") },
+                )
+                FilterChip(
+                    selected = approvalMode == Guard.MODE_ASK,
+                    onClick = { approvalMode = Guard.MODE_ASK; settings.approvalMode = Guard.MODE_ASK },
+                    label = { Text("Always ask me") },
+                )
+            }
+            Text(
+                if (approvalMode == Guard.MODE_AUTO) {
+                    "A reviewer model checks each shell command or message to someone the task didn't name against your task. It approves clear cases, blocks unrelated or injected ones and asks you when unsure."
+                } else "You approve every shell command and every message to someone the task didn't name.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (approvalMode == Guard.MODE_AUTO) {
+                OutlinedTextField(
+                    value = reviewerModel,
+                    onValueChange = { reviewerModel = it; settings.reviewerModel = it },
+                    label = { Text("Reviewer model") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Allow shell commands")
+                    Text(
+                        "Read-only queries are always allowed. This lets the agent run other commands after review; destructive ones are always refused.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(checked = shellEnabled, onCheckedChange = { shellEnabled = it; settings.shellEnabled = it })
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Report result to WhatsApp", modifier = Modifier.weight(1f))
                 Switch(checked = reportEnabled, onCheckedChange = { reportEnabled = it; settings.reportEnabled = it })

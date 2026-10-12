@@ -41,6 +41,24 @@ You can also share text from any app to Android Use to prefill a task.
 The phone must be unlocked while a task runs. The agent presses Home, then works in the foreground.
 Tap **Stop** in the app or in the notification to abort.
 
+## Shell access and approvals
+
+- **`shell_read`** is always available. It runs a fixed allowlist of read-only queries, such as
+  `getprop`, `dumpsys battery`, `settings get`, `pm list` and `wm size`. Commands run directly, not
+  through `sh -c`, so `;`, `|` and `$(…)` can't chain anything.
+- **`shell`** is off by default; turn it on in **Settings**. It runs any other command, with a
+  reason the agent must give. Destructive commands (`rm`, `pm uninstall`/`clear`, `reboot`,
+  `content delete`, factory reset, anything touching Shizuku or Android Use) are always refused.
+
+Shell commands and messages to recipients that your task doesn't name are **sensitive actions**:
+
+- **Auto-review** (the default): a reviewer model (`codex-auto-review`) sees your original task, the
+  exact action, the agent's stated reason, the recent steps and the on-screen text. On-screen text
+  is marked as untrusted. The reviewer approves actions that clearly serve the task, denies
+  unrelated ones or ones prompted by on-screen content (prompt injection), and asks you when unsure.
+- **Always ask me**: every sensitive action waits for you to tap **Approve** or **Deny**, either in
+  the notification or in the app. Unanswered requests are denied after 3 minutes.
+
 ## CI/CD
 
 `.github/workflows/android.yml` runs on every push and pull request:
@@ -82,7 +100,8 @@ On each turn, the model gets a downscaled screenshot plus a numbered list of on-
 (including popups and dialogs), then calls one or more tools:
 
 `batch`, `tap`, `type_text`, `fill_form`, `scroll`, `scroll_to`, `swipe`, `press_key`, `launch_app`,
-`list_apps`, `open_uri`, `compose_email`, `wait`, `save_note`, `finish`
+`list_apps`, `open_uri`, `open_settings`, `compose_sms`, `compose_email`, `shell_read`, `shell`,
+`wait`, `save_note`, `finish`
 
 The tools are designed to save model round trips:
 

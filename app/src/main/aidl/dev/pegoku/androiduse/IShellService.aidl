@@ -25,4 +25,7 @@ interface IShellService {
 
     // Sets (or appends to) the text of the focused editable node. False if there is none or it refused.
     boolean setText(String text, boolean append) = 8;
+
+    // Runs a program directly (no shell parsing). Same "<exitCode>\n<output>" format as run().
+    String exec(in String[] argv, long timeoutMs) = 9;
 }

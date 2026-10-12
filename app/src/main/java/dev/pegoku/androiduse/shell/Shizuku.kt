@@ -116,6 +116,13 @@ object ShizukuShell {
         dumpUi()?.let { pfd -> ParcelFileDescriptor.AutoCloseInputStream(pfd).use { it.readBytes().decodeToString() } }
     }
 
+    /** Runs a program without a shell, so metacharacters in arguments are inert. */
+    suspend fun exec(argv: List<String>, timeoutMs: Long = 30_000): ShellResult = withContext(Dispatchers.IO) {
+        val raw = connect().exec(argv.toTypedArray(), timeoutMs)
+        val newline = raw.indexOf('\n')
+        ShellResult(raw.substring(0, newline).toInt(), raw.substring(newline + 1))
+    }
+
     suspend fun bytes(command: String): ByteArray = withContext(Dispatchers.IO) {
         val pfd = connect().stream(command)
         ParcelFileDescriptor.AutoCloseInputStream(pfd).use { it.readBytes() }

@@ -13,7 +13,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ToolsTest {
-    private val tools = Tools.definitions.map { it.jsonObject }
+    private val tools = Tools.definitions(shellEnabled = true).map { it.jsonObject }
 
     @Test
     fun toolNamesAreUnique() {
@@ -30,6 +30,14 @@ class ToolsTest {
             assertTrue("$name should be strict", tool["strict"]!!.jsonPrimitive.boolean)
             assertStrictObject(name, tool["parameters"]!!.jsonObject)
         }
+    }
+
+    @Test
+    fun shellToolOnlyOfferedWhenEnabled() {
+        fun names(enabled: Boolean) = Tools.definitions(enabled).map { it.jsonObject["name"]!!.jsonPrimitive.content }
+        assertTrue("shell" in names(true))
+        assertFalse("shell" in names(false))
+        assertTrue("shell_read" in names(false))
     }
 
     @Test

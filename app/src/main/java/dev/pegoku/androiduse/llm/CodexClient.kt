@@ -39,14 +39,16 @@ class CodexClient(private val sessionId: String = UUID.randomUUID().toString()) 
         instructions: String,
         input: List<JsonElement>,
         tools: JsonArray,
+        toolChoice: JsonElement = kotlinx.serialization.json.JsonPrimitive("auto"),
+        parallelToolCalls: Boolean = true,
     ): List<JsonObject> {
         val body = buildJsonObject {
             put("model", model)
             put("instructions", instructions)
             put("input", JsonArray(input))
             put("tools", tools)
-            put("tool_choice", "auto")
-            put("parallel_tool_calls", true)
+            put("tool_choice", toolChoice)
+            put("parallel_tool_calls", parallelToolCalls)
             put("store", false)
             put("stream", true)
             putJsonObject("reasoning") {

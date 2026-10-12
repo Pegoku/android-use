@@ -45,8 +45,12 @@ class ShellService : IShellService.Stub() {
     private inline fun guarded(block: Automation.() -> Boolean): Boolean =
         runCatching { automation?.block() ?: false }.onFailure { Log.w(TAG, "automation call failed", it) }.getOrDefault(false)
 
-    override fun run(command: String, timeoutMs: Long): String {
-        val process = ProcessBuilder("sh", "-c", command).redirectErrorStream(true).start()
+    override fun run(command: String, timeoutMs: Long): String = runProcess(ProcessBuilder("sh", "-c", command), timeoutMs)
+
+    override fun exec(argv: Array<String>, timeoutMs: Long): String = runProcess(ProcessBuilder(*argv), timeoutMs)
+
+    private fun runProcess(builder: ProcessBuilder, timeoutMs: Long): String {
+        val process = builder.redirectErrorStream(true).start()
         val output = StringBuilder()
         val reader = thread(name = "shell-reader") {
             process.inputStream.bufferedReader().use { input ->

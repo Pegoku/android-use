@@ -119,7 +119,31 @@ object Tools {
         }
     }
 
-    val definitions: JsonArray = buildJsonArray {
+    private val shellRead = tool(
+        "shell_read",
+        "Run a read-only device query as the shell user and get its output, e.g. `getprop ro.build.version.release`, " +
+            "`dumpsys battery`, `settings get system screen_brightness`, `pm list packages`, `wm size`. Much faster than reading it from the UI. " +
+            "Only allowlisted read-only commands are accepted; no pipes or redirection.",
+        Param("command", "string", "The command line."),
+    )
+
+    private val shell = tool(
+        "shell",
+        "Run a shell command (adb shell, as the shell user) to change something quickly, e.g. `cmd uimode night yes` or `svc wifi enable`. " +
+            "Sensitive: it is checked against the owner's task and may need their approval. Destructive commands are always refused. " +
+            "Prefer UI actions or other tools when they are just as quick.",
+        Param("command", "string", "The command line (sh syntax)."),
+        Param("reason", "string", "Why this command is needed for the owner's task."),
+    )
+
+    /** All tools; the free-form shell tool is only offered when the owner enabled it. */
+    fun definitions(shellEnabled: Boolean): JsonArray = buildJsonArray {
+        base.forEach { add(it) }
+        add(shellRead)
+        if (shellEnabled) add(shell)
+    }
+
+    private val base: JsonArray = buildJsonArray {
         add(batch)
         add(tool(
             "tap",

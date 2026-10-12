@@ -53,7 +53,7 @@ object TaskRunner {
     suspend fun execute(context: Context, task: String, onProgress: (String) -> Unit): AgentResult {
         val settings = Settings(context)
         val device = Device(context)
-        fun agent(maxSteps: Int) = Agent(
+        fun agent(maxSteps: Int, task: String) = Agent(
             device = device,
             model = settings.model,
             fastModel = settings.fastModel.takeIf { it.isNotBlank() && it != settings.model },
@@ -64,6 +64,15 @@ object TaskRunner {
                 if (kind == LogKind.Action) onProgress(text)
             },
             onScreen = { obs -> _state.update { it.copy(screen = obs.bitmap) } },
+            guard = Guard(
+                context = context,
+                task = task,
+                mode = settings.approvalMode,
+                reviewerModel = settings.reviewerModel,
+                fallbackModel = settings.model,
+                log = ::log,
+            ),
+            shellEnabled = settings.shellEnabled,
         )
 
         val result = try {
@@ -73,7 +82,7 @@ object TaskRunner {
             delay(600)
             phase("Working on task")
             log(LogKind.Info, "Task: $task")
-            agent(settings.maxSteps).run(task)
+            agent(settings.maxSteps, task).run(task)
         } catch (e: CancellationException) {
             log(LogKind.Error, "Stopped by user.")
             _state.update { it.copy(running = false, phase = "Stopped", result = AgentResult(false, "Stopped by user")) }
@@ -97,7 +106,7 @@ object TaskRunner {
                 $message
                 Then confirm the message appears as sent in that chat. Do nothing else.
             """.trimIndent()
-            val report = runCatching { agent(30).run(reportTask) }
+            val report = runCatching { agent(30, reportTask).run(reportTask) }
                 .getOrElse { if (it is CancellationException) throw it else AgentResult(false, it.message ?: "error") }
             log(if (report.success) LogKind.Done else LogKind.Error, "WhatsApp report: " + report.summary)
         }
