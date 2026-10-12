@@ -16,10 +16,25 @@ WhatsApp chat (default: the `Notes` group).
   and calls the Codex Responses endpoint (`chatgpt.com/backend-api/codex/responses`), so usage counts
   against your plan, not an API key.
 
+## Install
+
+[<img src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png" alt="Get it on Obtainium" height="54">](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/Pegoku/android-use)
+
+[Obtainium](https://github.com/ImranR98/Obtainium) installs Android Use from this repository's
+releases and keeps it updated. Tap the badge on your phone, or add
+`https://github.com/Pegoku/android-use` in Obtainium manually.
+
+- **Stable:** tagged `v*` releases. This is Obtainium's default.
+- **Latest `main`:** the rolling `nightly` pre-release.
+
+Every release is signed with the same key, so updates install over each other. You can also
+download the APK straight from [Releases](https://github.com/Pegoku/android-use/releases) or build
+it yourself with `./gradlew installDebug`.
+
 ## Setup
 
 1. Install and start Shizuku (wireless debugging, `adb`, or root).
-2. Build and install: `./gradlew installDebug`.
+2. Install Android Use (see above).
 3. Open **Android Use**:
    - **Grant Shizuku access.**
    - **Sign in with ChatGPT.** This opens the browser on `auth.openai.com`, and the app catches the
@@ -134,3 +149,7 @@ After each turn, the agent waits for the UI to settle rather than sleeping for a
 Only the latest screenshot is sent in full, which keeps long tasks cheap. Text is set directly on
 the focused field through accessibility. If that fails, the agent falls back to `input text` or a
 clipboard paste.
+
+## License
+
+[GPL-3.0](LICENSE). Shizuku and the other dependencies use compatible licenses (Apache-2.0).

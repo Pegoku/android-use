@@ -118,5 +118,6 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.apk
+          # Only the signed release APK, so Obtainium picks it without asking.
+          files: dist/android-use-${{ env.VERSION_NAME }}.apk
           generate_release_notes: true
