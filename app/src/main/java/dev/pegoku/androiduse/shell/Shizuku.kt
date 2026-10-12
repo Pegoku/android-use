@@ -93,10 +93,27 @@ object ShizukuShell {
         return withTimeout(15_000) { deferred.await() }
     }
 
+    /**
+     * Stops the shell service, which also releases its UiAutomation connection so other tools
+     * (uiautomator, test runners) can use it while no task is running.
+     */
+    suspend fun release() {
+        if (service == null) return
+        service = null
+        withContext(Dispatchers.Main) { runCatching { Shizuku.unbindUserService(args, connection, true) } }
+    }
+
     suspend fun run(command: String, timeoutMs: Long = 30_000): ShellResult = withContext(Dispatchers.IO) {
         val raw = connect().run(command, timeoutMs)
         val newline = raw.indexOf('\n')
         ShellResult(raw.substring(0, newline).toInt(), raw.substring(newline + 1))
+    }
+
+    /** Calls the shell service directly (UiAutomation-backed methods). */
+    suspend fun <T> call(block: IShellService.() -> T): T = withContext(Dispatchers.IO) { connect().block() }
+
+    suspend fun dumpUi(): String? = call {
+        dumpUi()?.let { pfd -> ParcelFileDescriptor.AutoCloseInputStream(pfd).use { it.readBytes().decodeToString() } }
     }
 
     suspend fun bytes(command: String): ByteArray = withContext(Dispatchers.IO) {

@@ -11,6 +11,7 @@ okhttp = "5.5.0"
 serialization = "1.11.0"
 coroutines = "1.10.2"
 shizuku = "13.1.5"
+hiddenApiBypass = "6.2"
 junit = "4.13.2"
 
 [libraries]
@@ -29,6 +30,7 @@ kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 shizuku-api = { group = "dev.rikka.shizuku", name = "api", version.ref = "shizuku" }
 shizuku-provider = { group = "dev.rikka.shizuku", name = "provider", version.ref = "shizuku" }
+hiddenapibypass = { group = "org.lsposed.hiddenapibypass", name = "hiddenapibypass", version.ref = "hiddenApiBypass" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 
 [plugins]

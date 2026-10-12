@@ -1,5 +1,6 @@
 package dev.pegoku.androiduse.llm
 
+import dev.pegoku.androiduse.BuildConfig
 import dev.pegoku.androiduse.Http
 import dev.pegoku.androiduse.auth.CodexAuth
 import kotlinx.coroutines.Dispatchers
@@ -45,7 +46,7 @@ class CodexClient(private val sessionId: String = UUID.randomUUID().toString()) 
             put("input", JsonArray(input))
             put("tools", tools)
             put("tool_choice", "auto")
-            put("parallel_tool_calls", false)
+            put("parallel_tool_calls", true)
             put("store", false)
             put("stream", true)
             putJsonObject("reasoning") {
@@ -127,7 +128,10 @@ class CodexClient(private val sessionId: String = UUID.randomUUID().toString()) 
             val event = runCatching { json.parseToJsonElement(data).jsonObject }.getOrNull() ?: continue
             when (event["type"]?.jsonPrimitive?.content) {
                 "response.output_item.done" -> event["item"]?.jsonObject?.let(items::add)
-                "response.completed" -> return items
+                "response.completed" -> {
+                    if (BuildConfig.DEBUG) android.util.Log.d("AndroidUseTiming", "usage ${event["response"]?.jsonObject?.get("usage")?.toString()?.take(300)}")
+                    return items
+                }
                 "response.failed", "response.incomplete" ->
                     throw streamError(event["response"]?.jsonObject?.get("error") as? JsonObject, "response did not complete")
                 "error" -> throw streamError(event["error"] as? JsonObject ?: event, data.take(300))

@@ -56,6 +56,7 @@ object TaskRunner {
         fun agent(maxSteps: Int) = Agent(
             device = device,
             model = settings.model,
+            fastModel = settings.fastModel.takeIf { it.isNotBlank() && it != settings.model },
             effort = settings.effort,
             maxSteps = maxSteps,
             log = { kind, text ->

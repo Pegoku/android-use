@@ -1,5 +1,6 @@
 package dev.pegoku.androiduse.agent
 
+import dev.pegoku.androiduse.BuildConfig
 import android.os.Build
 import dev.pegoku.androiduse.device.Device
 import dev.pegoku.androiduse.device.Observation
@@ -29,6 +30,7 @@ data class AgentResult(val success: Boolean, val summary: String)
 class Agent(
     private val device: Device,
     private val model: String,
+    private val fastModel: String?,
     private val effort: String,
     private val maxSteps: Int,
     private val log: (LogKind, String) -> Unit,
@@ -49,9 +51,15 @@ class Agent(
         history += Raw(userMessage("Task: $task"))
         var nudges = 0
         for (step in 1..maxSteps) {
+            val t0 = System.currentTimeMillis()
             history += observe(step)
-            val output = client.respond(model, effort, instructions, render(), Tools.definitions)
-            output.forEach { history += Raw(it) }
+            val t1 = System.currentTimeMillis()
+            val stepModel = if (fastModel == null || smartTurns > 0) model else fastModel
+            if (smartTurns > 0) smartTurns--
+            val output = client.respond(stepModel, effort, instructions, render(), Tools.definitions)
+            if (BuildConfig.DEBUG) android.util.Log.d("AndroidUseTiming", "step $step observe ${t1 - t0}ms model($stepModel) ${System.currentTimeMillis() - t1}ms")
+            // Reasoning items are model-specific; leaving them out lets the fast and careful models share one history.
+            output.filter { it.type != "reasoning" }.forEach { history += Raw(it) }
 
             output.filter { it.type == "reasoning" }.forEach { item ->
                 item["summary"]?.jsonArray?.mapNotNull { (it as? JsonObject)?.get("text")?.jsonPrimitive?.content }
@@ -66,22 +74,52 @@ class Agent(
             val calls = output.filter { it.type == "function_call" }
             if (calls.isEmpty()) {
                 if (++nudges > 3) return AgentResult(false, "The model stopped without finishing the task.")
+                escalate("the model stopped using tools")
                 history += Raw(userMessage("Keep going using the tools. Do not ask me questions; if the task is complete or impossible, call finish."))
                 continue
             }
             nudges = 0
-            for (call in calls) {
+            val t2 = System.currentTimeMillis()
+            var abortReason: String? = null
+            for ((index, call) in calls.withIndex()) {
                 val name = call["name"]!!.jsonPrimitive.content
                 val callId = call["call_id"]!!.jsonPrimitive.content
                 val args = runCatching { Json.parseToJsonElement(call["arguments"]?.jsonPrimitive?.content ?: "{}").jsonObject }
                     .getOrDefault(JsonObject(emptyMap()))
-                log(LogKind.Action, "$name ${describeArgs(args)}")
-                if (name == "finish") {
-                    val success = args["success"]?.jsonPrimitive?.booleanOrNull ?: false
-                    val summary = args["summary"]?.jsonPrimitive?.content.orEmpty()
-                    return AgentResult(success, summary)
+                val result = when {
+                    abortReason != null -> "Skipped: $abortReason."
+                    name == "finish" && index > 0 ->
+                        "Not finished yet: check the result of this batch on the next screen, then call finish on its own."
+                    else -> {
+                        log(LogKind.Action, "$name ${describeArgs(args)}")
+                        if (name == "finish") {
+                            val success = args["success"]?.jsonPrimitive?.booleanOrNull ?: false
+                            val summary = args["summary"]?.jsonPrimitive?.content.orEmpty()
+                            if (stepModel == fastModel) {
+                                // Only the careful model may end a task; the fast one tends to declare victory early.
+                                escalate("double-checking the result", turns = 1)
+                                "Before finishing, verify on the current screen that every part of the task was really done, then call finish again."
+                            } else {
+                                return AgentResult(success, summary)
+                            }
+                        } else {
+                            if (index > 0) {
+                                // Later actions in a batch were planned against the earlier screen; let it settle and re-map ids.
+                                device.settle(200, 1_500)
+                                device.refreshTree()
+                            }
+                            val output = runCatching { execute(name, args) }.getOrElse { "Error: ${it.message}" }
+                            if (output.startsWith("Error") || output.contains("failed", ignoreCase = true) || output.contains("Stopped;")) {
+                                abortReason = "an earlier action in this batch did not succeed"
+                                escalate("an action failed")
+                            }
+                            val warning = repetitionWarning(name, args)
+                            if (warning.isNotEmpty()) escalate("the agent is repeating itself")
+                            if (name !in PASSIVE_ACTIONS) actedSinceObservation = true
+                            output + warning
+                        }
+                    }
                 }
-                val result = runCatching { execute(name, args) }.getOrElse { "Error: ${it.message}" }
                 log(LogKind.Result, result)
                 history += Raw(buildJsonObject {
                     put("type", "function_call_output")
@@ -89,7 +127,10 @@ class Agent(
                     put("output", result)
                 })
             }
-            delay(SETTLE_MS)
+            // Launching apps or URLs takes a while to render; wait for it instead of spending a turn on `wait`.
+            val navigated = calls.any { it["name"]?.jsonPrimitive?.content in SLOW_ACTIONS }
+            if (navigated) device.settle(idleMs = 600, timeoutMs = 6_000) else device.settle()
+            if (BuildConfig.DEBUG) android.util.Log.d("AndroidUseTiming", "step $step actions(${calls.size}) ${System.currentTimeMillis() - t2}ms")
         }
         return AgentResult(false, "Gave up after $maxSteps steps without finishing.")
     }
@@ -102,7 +143,15 @@ class Agent(
             else device.tapPoint(a.num("x") ?: error("x is required"), a.num("y") ?: error("y is required"), long)
         }
         "type_text" -> device.typeText(a.str("text").orEmpty(), a.bool("clear_first"), a.int("element"), a.bool("submit"))
-        "scroll" -> device.scroll(a.str("direction") ?: "down", a.int("element"))
+        "scroll" -> device.scroll(a.str("direction") ?: "down", a.int("element"), a.int("pages") ?: 1)
+        "scroll_to" -> device.scrollTo(a.str("text") ?: error("text is required"), a.str("direction") ?: "down", a.int("element"))
+        "batch" -> runBatch(a["actions"]?.jsonArray.orEmpty().map { it.jsonObject })
+        "fill_form" -> device.fillForm(
+            a["fields"]?.jsonArray.orEmpty().map { field ->
+                val obj = field.jsonObject
+                (obj.int("element") ?: error("each field needs an element")) to obj.str("text").orEmpty()
+            },
+        )
         "swipe" -> device.swipe(a.num("x1")!!, a.num("y1")!!, a.num("x2")!!, a.num("y2")!!, a.int("duration_ms") ?: 300)
         "press_key" -> device.pressKey(a.str("key") ?: error("key is required"))
         "launch_app" -> device.launchApp(a.str("app") ?: error("app is required"))
@@ -116,9 +165,9 @@ class Agent(
         "open_uri" -> device.openUri(a.str("uri") ?: error("uri is required"), a.str("package"))
         "compose_email" -> device.composeEmail(a.str("to").orEmpty(), a.str("subject").orEmpty(), a.str("body").orEmpty(), a.str("package"))
         "wait" -> {
-            val seconds = (a.num("seconds") ?: 2.0).coerceIn(0.0, 30.0)
-            delay((seconds * 1000).toLong())
-            "Waited ${seconds}s"
+            val seconds = (a.num("seconds") ?: 3.0).coerceIn(0.5, 30.0)
+            val waited = device.waitForStable((seconds * 1000).toLong())
+            "Waited ${waited / 100 / 10.0}s until the screen stopped changing"
         }
         "save_note" -> {
             a.str("note")?.let(notes::add)
@@ -127,9 +176,65 @@ class Agent(
         else -> "Unknown tool $name"
     }
 
+    /** Runs a list of sub-actions, re-reading the UI between them and stopping at the first failure. */
+    private suspend fun runBatch(actions: List<JsonObject>): String {
+        if (actions.isEmpty()) return "Error: batch has no actions"
+        val results = mutableListOf<String>()
+        for ((index, action) in actions.withIndex()) {
+            val kind = action.str("action") ?: "?"
+            val (tool, args) = when (kind) {
+                "long_press" -> "tap" to JsonObject(action + ("long_press" to JsonPrimitive(true)))
+                "launch_app" -> "launch_app" to JsonObject(mapOf("app" to (action["text"] ?: JsonPrimitive(""))))
+                "scroll" -> "scroll" to JsonObject(action + ("pages" to JsonPrimitive(1)))
+                else -> kind to action
+            }
+            if (index > 0) {
+                val previous = actions[index - 1].str("action")
+                if (previous == "launch_app") device.settle(600, 6_000) else device.settle(200, 1_500)
+                device.refreshTree()
+            }
+            val output = if (kind in Tools.BATCH_ACTIONS) runCatching { execute(tool, args) }.getOrElse { "Error: ${it.message}" }
+            else "Error: unknown action $kind"
+            results += "${index + 1}. $kind: $output"
+            if (output.startsWith("Error") || output.contains("failed", ignoreCase = true) || output.startsWith("No installed app")) {
+                if (index < actions.size - 1) results += "Stopped; ${actions.size - index - 1} remaining action(s) skipped."
+                break
+            }
+        }
+        return results.joinToString("\n")
+    }
+
+    private var smartTurns = 0
+    private var actedSinceObservation = false
+    private var lastScreenSignature: Int? = null
+
+    /** Hands the next [turns] steps to the careful model when the fast one runs into trouble. */
+    private fun escalate(reason: String, turns: Int = 3) {
+        if (fastModel == null || smartTurns >= turns) return
+        if (smartTurns == 0) log(LogKind.Info, "Switching to $model: $reason")
+        smartTurns = turns
+    }
+
+    private val recentActions = ArrayDeque<String>()
+
+    /** Nudges the model out of loops such as reopening the same screen over and over. */
+    private fun repetitionWarning(name: String, args: JsonObject): String {
+        val signature = "$name $args @${device.lastObservation?.tree?.packageName}"
+        recentActions.addLast(signature)
+        if (recentActions.size > 10) recentActions.removeFirst()
+        val repeats = recentActions.count { it == signature }
+        return if (repeats >= 3) {
+            "\nWarning: you have done exactly this $repeats times recently. You may be in a loop. If the task is already done, call finish; otherwise try a different approach."
+        } else ""
+    }
+
     private suspend fun observe(step: Int): Screen {
         val obs = device.observe()
         onScreen(obs)
+        val signature = obs.tree?.signature()
+        if (actedSinceObservation && signature != null && signature == lastScreenSignature) escalate("the last actions changed nothing")
+        lastScreenSignature = signature
+        actedSinceObservation = false
         val app = obs.tree?.packageName
         val text = buildString {
             append("Step $step/$maxSteps. Foreground app: ${app ?: "unknown"}\n")
@@ -142,6 +247,7 @@ class Agent(
                 append("UI element list unavailable: ${obs.treeError}. Use screenshot coordinates.\n")
             }
         }
+        if (BuildConfig.DEBUG) android.util.Log.d("AndroidUseObs", text.take(4000))
         return Screen(text, obs.jpegBase64, app)
     }
 
@@ -176,10 +282,14 @@ class Agent(
         return """
             You are Android Use, an agent that operates an Android phone (${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE}) on behalf of its owner to complete the task they give you. Current time: $now. Device locale: ${Locale.getDefault().toLanguageTag()}.
 
-            After every action you receive a fresh screenshot and a list of on-screen UI elements, each with an [id], class, text, flags and its centre @(x,y) in screenshot pixels. Work step by step:
+            After your actions you receive a fresh screenshot and a list of on-screen UI elements, each with an [id], class, text, flags and its centre @(x,y) in screenshot pixels. Work quickly: every round trip costs the user time, so use as few turns as possible.
+            - Batch aggressively with the batch tool: whenever you can predict the next few actions without seeing the screen in between, put them all in ONE batch call. Examples: tap "New contact" then type into fields; type a message then tap Send; dismiss two dialogs; tap a search field and type the query with submit=true; launch an app then tap something you know will be there. Stop the batch only at an action that opens a screen whose contents you need to see first. Aim for 2-6 actions per turn.
+            - Use fill_form to fill several fields of a form in one call, and scroll_to to jump straight to a known item instead of scrolling page by page. Use scroll with pages > 1 to move far.
+            - The system already waits for the screen to settle after every turn, so only call wait when content is visibly still loading.
+            - Prefer the fastest route: open_uri for known web pages or deep links, a search box over scrolling through long lists.
             - Prefer acting on elements by [id]. Use raw x,y coordinates only for things missing from the list (e.g. canvas, web content, games).
             - Use launch_app to open apps rather than hunting on the home screen; use list_apps if unsure of an app's name.
-            - After each action, check the new screen to confirm it had the intended effect before moving on. If something did not work, try another approach (scroll, search, back, wait for loading).
+            - Check each new screen to confirm your actions had the intended effect before moving on. If something did not work, try another approach (scroll, search, back, wait for loading).
             - To type, focus the field with type_text's element argument. Dismiss pop-ups, permission prompts and onboarding screens only in the way that least changes the user's settings.
             - When you find information you need later (values, names, numbers), call save_note with the exact value.
             - For email, compose_email opens a prefilled draft; then press the app's Send button and confirm the draft was sent. Never leave a requested message unsent.
@@ -188,6 +298,11 @@ class Agent(
             - Do not interact with "Android Use" (this automation app) or its notification.
             - Finish with finish(success, summary). The summary must state the concrete result (e.g. the value found and who it was sent to) or exactly why it failed. Only report success when you verified it.
         """.trimIndent()
+    }
+
+    private companion object {
+        val SLOW_ACTIONS = setOf("launch_app", "open_uri", "compose_email")
+        val PASSIVE_ACTIONS = setOf("save_note", "list_apps", "wait")
     }
 
     private fun userMessage(text: String) = buildJsonObject {
@@ -205,10 +320,6 @@ class Agent(
     private fun JsonObject.int(key: String) = (this[key] as? JsonPrimitive)?.let { it.intOrNull ?: it.doubleOrNull?.toInt() }
     private fun JsonObject.num(key: String) = (this[key] as? JsonPrimitive)?.doubleOrNull
     private fun JsonObject.bool(key: String) = (this[key] as? JsonPrimitive)?.booleanOrNull ?: false
-
-    companion object {
-        private const val SETTLE_MS = 1200L
-    }
 }
 
 enum class LogKind { Info, Thought, Action, Result, Error, Done }

@@ -28,6 +28,9 @@ class UiTree(val packageName: String?, val elements: List<UiElement>) {
 
     operator fun get(id: Int): UiElement? = elements.firstOrNull { it.id == id }
 
+    /** Cheap fingerprint of what is on screen, used to detect that scrolling made no progress. */
+    fun signature(): Int = elements.fold(packageName.hashCode()) { acc, e -> 31 * acc + (e.text + e.description + e.bounds).hashCode() }
+
     /** Compact one-line-per-element listing, with coordinates scaled into screenshot space. */
     fun describe(scale: Float): String = buildString {
         for (e in elements) {

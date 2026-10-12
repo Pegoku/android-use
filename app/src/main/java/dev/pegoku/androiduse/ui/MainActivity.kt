@@ -289,6 +289,7 @@ private fun SetupCard(shizuku: ShizukuState, tokens: dev.pegoku.androiduse.auth.
 @Composable
 private fun SettingsCard(settings: Settings) {
     var model by remember { mutableStateOf(settings.model) }
+    var fastModel by remember { mutableStateOf(settings.fastModel) }
     var effort by remember { mutableStateOf(settings.effort) }
     var maxSteps by remember { mutableStateOf(settings.maxSteps.toString()) }
     var reportEnabled by remember { mutableStateOf(settings.reportEnabled) }
@@ -307,7 +308,7 @@ private fun SettingsCard(settings: Settings) {
                 OutlinedTextField(
                     value = model,
                     onValueChange = { model = it; settings.model = it },
-                    label = { Text("Model") },
+                    label = { Text("Main model") },
                     singleLine = true,
                     modifier = Modifier.weight(1f),
                 )
@@ -324,6 +325,14 @@ private fun SettingsCard(settings: Settings) {
                     }
                 }
             }
+            OutlinedTextField(
+                value = fastModel,
+                onValueChange = { fastModel = it; settings.fastModel = it },
+                label = { Text("Fast model for routine steps (blank = off)") },
+                supportingText = { Text("The main model takes over when the fast one gets stuck.") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
             Text("Reasoning effort", style = MaterialTheme.typography.labelLarge)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Settings.EFFORTS.forEach { level ->

@@ -12,7 +12,7 @@ android {
         applicationId = "dev.pegoku.androiduse"
         minSdk = 28
         targetSdk = 37
-        versionCode = 1
+        versionCode = 2
         versionName = "0.1.0"
     }
 
@@ -50,6 +50,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.shizuku.api)
     implementation(libs.shizuku.provider)
+    implementation(libs.hiddenapibypass)
     debugImplementation(libs.androidx.compose.ui.tooling)
     testImplementation(libs.junit)
 }

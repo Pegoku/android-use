@@ -16,6 +16,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+import dev.pegoku.androiduse.shell.ShizukuShell
 
 /** Foreground service that keeps the agent alive while other apps are in front. */
 class AgentService : Service() {
@@ -51,6 +54,7 @@ class AgentService : Service() {
                 val result = TaskRunner.execute(this@AgentService, task) { notifications.notify(ID_RUN, progress(it)) }
                 notifications.notify(ID_RESULT, resultNotification(if (result.success) "Task done" else "Task failed", result.summary))
             } finally {
+                withContext(NonCancellable) { runCatching { ShizukuShell.release() } }
                 TaskRunner.markFinished()
                 wakeLock?.takeIf { it.isHeld }?.release()
                 stopForeground(STOP_FOREGROUND_REMOVE)

@@ -1,6 +1,7 @@
 package dev.pegoku.androiduse.shell
 
 import android.os.ParcelFileDescriptor
+import android.util.Log
 import java.io.File
 import dev.pegoku.androiduse.IShellService
 import java.util.concurrent.TimeUnit
@@ -9,13 +10,40 @@ import kotlin.system.exitProcess
 
 /**
  * Runs inside a process spawned by Shizuku with the shell (adb) uid, so it can
- * use `input`, `screencap`, `uiautomator`, `am`, etc. without root.
+ * use `screencap`, `am`, UiAutomation, etc. without root.
  */
 class ShellService : IShellService.Stub() {
 
+    private val automation: Automation? by lazy {
+        runCatching { Automation() }.onFailure { Log.w(TAG, "UiAutomation unavailable, falling back to shell tools", it) }.getOrNull()
+    }
+
     override fun destroy() {
+        automation?.disconnect()
         exitProcess(0)
     }
+
+    override fun dumpUi(): ParcelFileDescriptor? {
+        val xml = runCatching { automation?.dump() }.onFailure { Log.w(TAG, "dump failed", it) }.getOrNull() ?: return null
+        val (readEnd, writeEnd) = ParcelFileDescriptor.createPipe()
+        thread(name = "ui-dump") {
+            runCatching { ParcelFileDescriptor.AutoCloseOutputStream(writeEnd).use { it.write(xml.toByteArray()) } }
+        }
+        return readEnd
+    }
+
+    override fun waitForIdle(idleMs: Long, timeoutMs: Long): Boolean = automation?.waitForIdle(idleMs, timeoutMs) ?: false
+
+    override fun tap(x: Int, y: Int, durationMs: Long): Boolean = guarded { tap(x, y, durationMs) }
+
+    override fun swipe(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Long): Boolean = guarded { swipe(x1, y1, x2, y2, durationMs) }
+
+    override fun key(keyCode: Int): Boolean = guarded { key(keyCode) }
+
+    override fun setText(text: String, append: Boolean): Boolean = guarded { setText(text, append) }
+
+    private inline fun guarded(block: Automation.() -> Boolean): Boolean =
+        runCatching { automation?.block() ?: false }.onFailure { Log.w(TAG, "automation call failed", it) }.getOrDefault(false)
 
     override fun run(command: String, timeoutMs: Long): String {
         val process = ProcessBuilder("sh", "-c", command).redirectErrorStream(true).start()
@@ -54,6 +82,7 @@ class ShellService : IShellService.Stub() {
     }
 
     companion object {
+        private const val TAG = "AndroidUseShell"
         const val TIMEOUT_EXIT_CODE = 124
         private const val MAX_OUTPUT_CHARS = 200_000
     }

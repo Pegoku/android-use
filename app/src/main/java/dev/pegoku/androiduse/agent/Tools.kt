@@ -39,7 +39,86 @@ object Tools {
     private val optNumber = listOf("number", "null")
     private val optString = listOf("string", "null")
 
+    private val fillForm = buildJsonObject {
+        put("type", "function")
+        put("name", "fill_form")
+        put("description", "Fill several text fields on the current screen in one call. Each field is tapped, its content replaced with the given text, then the next one is filled.")
+        put("strict", true)
+        putJsonObject("parameters") {
+            put("type", "object")
+            putJsonObject("properties") {
+                putJsonObject("fields") {
+                    put("type", "array")
+                    put("description", "Fields to fill, in order.")
+                    putJsonObject("items") {
+                        put("type", "object")
+                        putJsonObject("properties") {
+                            putJsonObject("element") { put("type", "integer"); put("description", "Editable element id.") }
+                            putJsonObject("text") { put("type", "string"); put("description", "Text to put in the field.") }
+                        }
+                        putJsonArray("required") { add(JsonPrimitive("element")); add(JsonPrimitive("text")) }
+                        put("additionalProperties", false)
+                    }
+                }
+            }
+            putJsonArray("required") { add(JsonPrimitive("fields")) }
+            put("additionalProperties", false)
+        }
+    }
+
+    private fun nullable(type: String, description: String) = buildJsonObject {
+        putJsonArray("type") { add(JsonPrimitive(type)); add(JsonPrimitive("null")) }
+        put("description", description)
+    }
+
+    val BATCH_ACTIONS = listOf("tap", "long_press", "type_text", "press_key", "scroll", "scroll_to", "launch_app")
+
+    private val batch = buildJsonObject {
+        put("type", "function")
+        put("name", "batch")
+        put(
+            "description",
+            "Run several actions in sequence in ONE turn, without a new screenshot in between. Element ids refer to the current screen " +
+                "and are re-mapped if it shifts; the batch stops at the first failure. Fields not used by an action must be null.",
+        )
+        put("strict", true)
+        putJsonObject("parameters") {
+            put("type", "object")
+            putJsonObject("properties") {
+                putJsonObject("actions") {
+                    put("type", "array")
+                    put("description", "Actions to run in order.")
+                    putJsonObject("items") {
+                        put("type", "object")
+                        val fields = linkedMapOf(
+                            "element" to nullable("integer", "Element id (tap, long_press, type_text, scroll, scroll_to)."),
+                            "x" to nullable("number", "Screenshot x when no element (tap, long_press)."),
+                            "y" to nullable("number", "Screenshot y when no element (tap, long_press)."),
+                            "text" to nullable("string", "Text to type (type_text), item to find (scroll_to), or app name (launch_app)."),
+                            "clear_first" to nullable("boolean", "type_text: replace the field's content."),
+                            "submit" to nullable("boolean", "type_text: press Enter afterwards."),
+                            "key" to nullable("string", "press_key: key name."),
+                            "direction" to nullable("string", "scroll / scroll_to: up, down, left or right."),
+                        )
+                        putJsonObject("properties") {
+                            putJsonObject("action") {
+                                put("type", "string")
+                                putJsonArray("enum") { BATCH_ACTIONS.forEach { add(JsonPrimitive(it)) } }
+                            }
+                            fields.forEach { (name, schema) -> put(name, schema) }
+                        }
+                        putJsonArray("required") { add(JsonPrimitive("action")); fields.keys.forEach { add(JsonPrimitive(it)) } }
+                        put("additionalProperties", false)
+                    }
+                }
+            }
+            putJsonArray("required") { add(JsonPrimitive("actions")) }
+            put("additionalProperties", false)
+        }
+    }
+
     val definitions: JsonArray = buildJsonArray {
+        add(batch)
         add(tool(
             "tap",
             "Tap an element by its [id] from the UI element list (preferred), or tap screenshot coordinates x,y when the target is not listed.",
@@ -56,11 +135,20 @@ object Tools {
             Param("clear_first", "boolean", "Delete the field's existing content before typing."),
             Param("submit", "boolean", "Press Enter after typing (e.g. to search)."),
         ))
+        add(fillForm)
         add(tool(
             "scroll",
-            "Scroll to reveal more content. Direction is where you want to move in the content: 'down' shows content further below.",
+            "Scroll by whole pages. Direction is where you want to move in the content: 'down' shows content further below. Prefer scroll_to when you know what you are looking for.",
             Param("direction", "string", "Scroll direction.", listOf("up", "down", "left", "right")),
             Param("element", optInt, "Scrollable element to scroll inside, or null for the main screen area."),
+            Param("pages", "integer", "How many pages to scroll in one go (1-10). Use more than 1 to jump far, e.g. to the bottom of a long page."),
+        ))
+        add(tool(
+            "scroll_to",
+            "Scroll repeatedly until an element whose text or description contains the query is on screen, in a single call. Much faster than scrolling step by step. Falls back to reporting the end of the list if not found.",
+            Param("text", "string", "Text (case-insensitive substring) of the item to bring into view, e.g. \"About phone\"."),
+            Param("direction", "string", "Direction to search in.", listOf("up", "down", "left", "right")),
+            Param("element", optInt, "Scrollable container to scroll inside, or null for the main screen area."),
         ))
         add(tool(
             "swipe",
@@ -102,8 +190,8 @@ object Tools {
         ))
         add(tool(
             "wait",
-            "Wait for the screen to settle or content to load, then observe again.",
-            Param("seconds", "number", "Seconds to wait (max 30)."),
+            "Wait until the screen stops changing (e.g. a page still loading), up to the given number of seconds, then observe again.",
+            Param("seconds", "number", "Maximum seconds to wait (max 30)."),
         ))
         add(tool(
             "save_note",
