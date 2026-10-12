@@ -41,6 +41,32 @@ You can also share text from any app to Android Use to prefill a task.
 The phone must be unlocked while a task runs. The agent presses Home, then works in the foreground.
 Tap **Stop** in the app or in the notification to abort.
 
+## CI/CD
+
+`.github/workflows/android.yml` runs on every push and pull request:
+
+1. Lint and run unit tests.
+2. Build debug and release APKs.
+3. Upload the APKs as workflow artifacts.
+
+Each push to `main` also updates a rolling **nightly** pre-release with the latest APKs. Pushing a
+`v*` tag (for example `git tag v0.2.0 && git push origin v0.2.0`) publishes a versioned GitHub
+release.
+
+To give releases a stable signature, so that updates install over the previous version, add these
+repository secrets:
+
+| Secret | Value |
+| --- | --- |
+| `KEYSTORE_B64` | `base64 -w0 release.jks` |
+| `KEYSTORE_PASSWORD` | keystore password |
+| `KEY_ALIAS` | key alias |
+| `KEY_PASSWORD` | key password |
+
+Without these secrets, the release APK is signed with a throwaway debug key, and it won't install
+over a previous build. For local release builds, put `storeFile`, `storePassword`, `keyAlias` and
+`keyPassword` in a git-ignored `keystore.properties` file.
+
 ## How it works
 
 | Piece | File |

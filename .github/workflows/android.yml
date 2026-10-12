@@ -1,0 +1,122 @@
+name: Android CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Accept Android SDK licences
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      - name: Lint release and run unit tests
+        run: ./gradlew :app:lintRelease :app:testDebugUnitTest
+
+      - name: Version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION_NAME="${GITHUB_REF_NAME#v}"
+          else
+            VERSION_NAME="0.2.0-nightly.${GITHUB_RUN_NUMBER}+${GITHUB_SHA::7}"
+          fi
+          echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
+          echo "VERSION_CODE=$((100 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+
+      - name: Prepare signing key
+        if: github.event_name != 'pull_request'
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            umask 077
+            printf '%s' "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          else
+            echo "::warning::KEYSTORE_B64 secret not set; release APK is signed with a throwaway debug key"
+          fi
+
+      - name: Build APKs
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          ./gradlew :app:assembleDebug :app:assembleRelease \
+            -PversionCode="$VERSION_CODE" -PversionName="$VERSION_NAME"
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk "dist/android-use-${VERSION_NAME}.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "dist/android-use-${VERSION_NAME}-debug.apk"
+
+      - name: Verify release signature
+        if: env.KEYSTORE_FILE != ''
+        run: |
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/apksigner" verify --print-certs dist/android-use-${VERSION_NAME}.apk
+
+      - name: Remove signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.jks"
+
+      - name: Upload test and lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: |
+            app/build/reports/
+            app/build/test-results/
+          if-no-files-found: ignore
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-use-apks
+          path: dist/*.apk
+          if-no-files-found: error
+
+      - name: Publish nightly release
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git tag --force nightly "$GITHUB_SHA"
+          git push --force origin nightly
+          gh release view nightly >/dev/null 2>&1 || gh release create nightly \
+            --title "Nightly" \
+            --notes "Latest build of main. Install the APK, start Shizuku, then grant access and sign in with ChatGPT in the app." \
+            --prerelease
+          gh release edit nightly --target "$GITHUB_SHA" --notes "Latest build of main ($GITHUB_SHA). Install the APK, start Shizuku, then grant access and sign in with ChatGPT in the app."
+          # Keep only the current build's APKs on the rolling release.
+          for asset in $(gh release view nightly --json assets --jq '.assets[].name'); do
+            gh release delete-asset nightly "$asset" --yes
+          done
+          gh release upload nightly dist/*.apk --clobber
+
+      - name: GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.apk
+          generate_release_notes: true

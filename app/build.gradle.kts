@@ -1,8 +1,18 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
 }
+
+val signingProperties = Properties().apply {
+    val config = rootProject.file("keystore.properties")
+    if (config.isFile) config.inputStream().use { load(it) }
+}
+fun signingValue(property: String, environment: String): String? =
+    signingProperties.getProperty(property) ?: providers.environmentVariable(environment).orNull
+val releaseStore = signingValue("storeFile", "KEYSTORE_FILE")
 
 android {
     namespace = "dev.pegoku.androiduse"
@@ -12,8 +22,19 @@ android {
         applicationId = "dev.pegoku.androiduse"
         minSdk = 28
         targetSdk = 37
-        versionCode = 2
-        versionName = "0.1.0"
+        versionCode = providers.gradleProperty("versionCode").orElse("2").get().toInt()
+        versionName = providers.gradleProperty("versionName").orElse("0.2.0").get()
+    }
+
+    signingConfigs {
+        if (releaseStore != null) {
+            create("release") {
+                storeFile = rootProject.file(releaseStore)
+                storePassword = requireNotNull(signingValue("storePassword", "KEYSTORE_PASSWORD"))
+                keyAlias = requireNotNull(signingValue("keyAlias", "KEY_ALIAS"))
+                keyPassword = requireNotNull(signingValue("keyPassword", "KEY_PASSWORD"))
+            }
+        }
     }
 
     buildTypes {
@@ -21,7 +42,8 @@ android {
             // The Shizuku user service is instantiated reflectively in a separate process;
             // keep everything unobfuscated rather than maintaining keep rules.
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug")
+            // Without a configured release key, fall back to the debug key so the APK still installs.
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
     compileOptions {
