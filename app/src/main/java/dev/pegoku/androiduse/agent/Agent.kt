@@ -80,6 +80,7 @@ class Agent(
             }
             nudges = 0
             val t2 = System.currentTimeMillis()
+            val packageBefore = device.foregroundPackage
             var abortReason: String? = null
             for ((index, call) in calls.withIndex()) {
                 val name = call["name"]!!.jsonPrimitive.content
@@ -128,8 +129,11 @@ class Agent(
                 })
             }
             // Launching apps or URLs takes a while to render; wait for it instead of spending a turn on `wait`.
-            val navigated = calls.any { it["name"]?.jsonPrimitive?.content in SLOW_ACTIONS }
-            if (navigated) device.settle(idleMs = 600, timeoutMs = 6_000) else device.settle()
+            val navigated = calls.any { call ->
+                val name = call["name"]?.jsonPrimitive?.content
+                name in SLOW_ACTIONS || (name == "batch" && "launch_app" in call["arguments"]?.jsonPrimitive?.content.orEmpty())
+            }
+            if (navigated) device.awaitForegroundChange(packageBefore) else device.settle()
             if (BuildConfig.DEBUG) android.util.Log.d("AndroidUseTiming", "step $step actions(${calls.size}) ${System.currentTimeMillis() - t2}ms")
         }
         return AgentResult(false, "Gave up after $maxSteps steps without finishing.")

@@ -67,6 +67,24 @@ class Device(private val context: Context) {
     suspend fun settle(idleMs: Long = 300, timeoutMs: Long = 2_500) {
         val idle = runCatching { ShizukuShell.call { waitForIdle(idleMs, timeoutMs) } }.getOrDefault(false)
         if (!idle) delay(idleMs)
+        awaitStableLayout()
+    }
+
+    /**
+     * Accessibility goes idle before animations finish, so also wait until two consecutive dumps
+     * have the same layout. Otherwise the model sees a half-transitioned screen and repeats taps.
+     */
+    private suspend fun awaitStableLayout(maxMs: Long = 1_500) {
+        val start = System.currentTimeMillis()
+        refreshTree()
+        var previous = currentTree?.signature()
+        while (System.currentTimeMillis() - start < maxMs) {
+            delay(150)
+            refreshTree()
+            val signature = currentTree?.signature()
+            if (signature == previous) return
+            previous = signature
+        }
     }
 
     suspend fun observe(): Observation = coroutineScope {
@@ -99,6 +117,19 @@ class Device(private val context: Context) {
         val tree = treeResult.getOrNull()
         currentTree = tree
         Observation(shot, jpeg, scale, tree, treeResult.exceptionOrNull()?.message).also { lastObservation = it }
+    }
+
+    val foregroundPackage: String? get() = currentTree?.packageName
+
+    /** After launching something, waits (up to [maxMs]) for another app to come to the front, then for it to settle. */
+    suspend fun awaitForegroundChange(previous: String?, maxMs: Long = 5_000) {
+        val start = System.currentTimeMillis()
+        while (System.currentTimeMillis() - start < maxMs) {
+            refreshTree()
+            if (foregroundPackage != null && foregroundPackage != previous) break
+            delay(250)
+        }
+        settle(400, 3_000)
     }
 
     /** Polls the UI tree until it stops changing (at least ~1s), up to [maxMs]. */
