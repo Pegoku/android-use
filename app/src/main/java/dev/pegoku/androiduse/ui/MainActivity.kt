@@ -61,6 +61,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.pegoku.androiduse.Settings
 import dev.pegoku.androiduse.agent.ApprovalRequest
+import dev.pegoku.androiduse.assistant.AssistantActivity
+import androidx.lifecycle.repeatOnLifecycle
 import dev.pegoku.androiduse.agent.Approvals
 import dev.pegoku.androiduse.agent.Guard
 import dev.pegoku.androiduse.agent.LogKind
@@ -144,6 +146,7 @@ private fun Screen(sharedTask: androidx.compose.runtime.MutableState<String?>) {
         }
         item { approval?.let { ApprovalCard(it) } }
         item { SetupCard(shizuku, tokens) }
+        item { AssistantCard(shizuku) }
         item { if (showSettings) SettingsCard(settings) }
         item {
             Card(Modifier.fillMaxWidth()) {
@@ -197,7 +200,60 @@ private fun Screen(sharedTask: androidx.compose.runtime.MutableState<String?>) {
     }
 }
 
-private const val HEADER_ITEMS = 6
+private const val HEADER_ITEMS = 7
+
+private fun isDefaultAssistant(context: android.content.Context): Boolean =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        context.getSystemService(android.app.role.RoleManager::class.java).isRoleHeld(android.app.role.RoleManager.ROLE_ASSISTANT)
+    } else {
+        android.provider.Settings.Secure.getString(context.contentResolver, "assistant")?.startsWith(context.packageName) == true
+    }
+
+@Composable
+private fun AssistantCard(shizuku: ShizukuState) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var isDefault by remember { mutableStateOf(isDefaultAssistant(context)) }
+    var message by remember { mutableStateOf<String?>(null) }
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    LaunchedEffect(lifecycle) {
+        lifecycle.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) { isDefault = isDefaultAssistant(context) }
+    }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Assistant", fontWeight = FontWeight.Bold)
+            Text(
+                if (isDefault) "Android Use is your default assistant. Long-press Home (or the power button, if set up) to chat or ask it to do things."
+                else "Make Android Use your default assistant to open it over any app with long-press Home or the power button.",
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (!isDefault) {
+                    FilledTonalButton(onClick = {
+                        scope.launch {
+                            val role = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && shizuku == ShizukuState.Ready) {
+                                runCatching {
+                                    ShizukuShell.run("cmd role add-role-holder --user 0 android.app.role.ASSISTANT ${context.packageName}")
+                                }.getOrNull()
+                            } else null
+                            isDefault = isDefaultAssistant(context)
+                            if (!isDefault) {
+                                message = role?.output?.takeIf { it.isNotBlank() }?.let { "Couldn't set it automatically ($it). Pick Android Use as the digital assistant app." }
+                                    ?: "Pick Android Use as the digital assistant app."
+                                context.startActivity(Intent(android.provider.Settings.ACTION_VOICE_INPUT_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                            } else {
+                                message = null
+                            }
+                        }
+                    }) { Text("Make default assistant") }
+                }
+                OutlinedButton(onClick = { context.startActivity(AssistantActivity.intent(context).putExtra(AssistantActivity.EXTRA_RESUMED, false)) }) {
+                    Text("Try it")
+                }
+            }
+            message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        }
+    }
+}
 
 @Composable
 private fun ApprovalCard(request: ApprovalRequest) {

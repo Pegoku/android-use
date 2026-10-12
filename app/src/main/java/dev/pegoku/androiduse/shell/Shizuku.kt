@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import rikka.shizuku.Shizuku
 
@@ -54,13 +55,19 @@ object ShizukuShell {
     }
 
     fun init() {
-        Shizuku.addBinderReceivedListenerSticky { refresh() }
+        Shizuku.addBinderReceivedListenerSticky { refresh(); warmUp() }
         Shizuku.addBinderDeadListener {
             service = null
             refresh()
         }
-        Shizuku.addRequestPermissionResultListener { _, _ -> refresh() }
+        Shizuku.addRequestPermissionResultListener { _, _ -> refresh(); warmUp() }
         refresh()
+    }
+
+    /** Binds the shell service ahead of time so the first screenshot or command doesn't pay the startup cost. */
+    fun warmUp() {
+        if (_state.value != ShizukuState.Ready || service != null) return
+        kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch { runCatching { connect() } }
     }
 
     fun refresh() {

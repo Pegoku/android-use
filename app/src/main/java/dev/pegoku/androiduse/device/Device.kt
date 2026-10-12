@@ -151,6 +151,21 @@ class Device(private val context: Context) {
         return System.currentTimeMillis() - start
     }
 
+    /** Just a downscaled screenshot (no UI tree, so no UiAutomation connection), for the assistant's screen sharing. */
+    suspend fun captureScreen(): Pair<Bitmap, String> {
+        val full = screenshot()
+        val scale = minOf(1f, MAX_SHOT_EDGE.toFloat() / max(full.width, full.height))
+        val shot = if (scale < 1f) {
+            Bitmap.createScaledBitmap(full, (full.width * scale).roundToInt(), (full.height * scale).roundToInt(), true)
+                .also { full.recycle() }
+        } else full
+        val jpeg = ByteArrayOutputStream().use { out ->
+            shot.compress(Bitmap.CompressFormat.JPEG, 75, out)
+            Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
+        }
+        return shot to jpeg
+    }
+
     /** Re-reads the UI tree without a screenshot (fast), used between batched actions. */
     suspend fun refreshTree() {
         currentTree = runCatching { dumpUi() }.getOrNull() ?: currentTree

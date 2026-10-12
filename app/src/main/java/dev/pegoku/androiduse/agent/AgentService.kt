@@ -56,11 +56,14 @@ class AgentService : Service() {
 
         TaskRunner.job = scope.launch {
             try {
-                val result = TaskRunner.execute(this@AgentService, task) { notifications.notify(ID_RUN, progress(it)) }
+                val result = TaskRunner.execute(this@AgentService, task, intent.getBooleanExtra(EXTRA_FROM_HOME, true)) { notifications.notify(ID_RUN, progress(it)) }
                 notifications.notify(ID_RESULT, resultNotification(if (result.success) "Task done" else "Task failed", result.summary))
             } finally {
-                withContext(NonCancellable) { runCatching { ShizukuShell.release() } }
-                TaskRunner.markFinished()
+                withContext(NonCancellable) {
+                    // Deliver the result first: the assistant reopens itself through the shell service.
+                    runCatching { TaskRunner.markFinished() }
+                    runCatching { ShizukuShell.release() }
+                }
                 wakeLock?.takeIf { it.isHeld }?.release()
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
@@ -103,6 +106,7 @@ class AgentService : Service() {
 
     companion object {
         const val EXTRA_TASK = "task"
+        const val EXTRA_FROM_HOME = "from_home"
         private const val ACTION_STOP = "dev.pegoku.androiduse.STOP"
         private const val CHANNEL_RUN = "run"
         private const val CHANNEL_RESULT = "result"

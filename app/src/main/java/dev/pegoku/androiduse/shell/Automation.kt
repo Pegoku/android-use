@@ -13,6 +13,7 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
+import dev.pegoku.androiduse.BuildConfig
 import org.lsposed.hiddenapibypass.HiddenApiBypass
 
 /**
@@ -66,6 +67,8 @@ internal class Automation {
                 ) null else window.root
                 // Skip thin system bars (status / navigation) but keep e.g. the notification shade.
                 val systemBar = window.type == AccessibilityWindowInfo.TYPE_SYSTEM && bounds.height() < screen.height() / 6
+                // Our own windows (the assistant overlay, approval card) are never part of what the agent works on.
+                if (root?.packageName == BuildConfig.APPLICATION_ID) continue
                 if (root != null && !systemBar) roots += root to covered.toList()
                 covered += bounds
             }

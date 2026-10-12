@@ -29,6 +29,25 @@ WhatsApp chat (default: the `Notes` group).
 4. Optional: in **Settings**, pick the models and reasoning effort, the step limit, and the WhatsApp
    report chat.
 
+## Default assistant
+
+Android Use can replace Gemini or Google Assistant as your **default digital assistant**. In the
+app, tap **Make default assistant**. With Shizuku running this is a single tap; otherwise it opens
+the system setting. After that, long-press Home (or the power button, if set up) to open the
+assistant over whatever app you're in:
+
+- **Chat:** answers stream in. It uses web search for current information such as weather, news
+  and opening hours, and replies in the language you write in.
+- **Do things:** ask it to act ("text Anna I'm late", "turn on dark mode", "start this timer").
+  The overlay steps aside while the agent works, then comes back with the outcome.
+- **Ask about the screen:** the screen is captured before the overlay draws. Tap **Ask about
+  screen** (or **+**) to attach it to your next message, so you can say things like "what's this?"
+  or "reply to her".
+- **Other controls:** a mic for voice input, read-aloud, copy, new chat and minimize.
+
+Chat replies use the fast model (about 1 s until the reply starts streaming). Phone tasks use the
+agent described below.
+
 ## Models
 
 Routine steps run on a **fast model** (default `gpt-6-luna`, about 2 s per turn). The **main model**

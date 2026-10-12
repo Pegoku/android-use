@@ -41,6 +41,8 @@ class CodexClient(private val sessionId: String = UUID.randomUUID().toString()) 
         tools: JsonArray,
         toolChoice: JsonElement = kotlinx.serialization.json.JsonPrimitive("auto"),
         parallelToolCalls: Boolean = true,
+        /** Called with each streamed chunk of reply text; a null signals a retry, so drop what was received. */
+        onTextDelta: ((String?) -> Unit)? = null,
     ): List<JsonObject> {
         val body = buildJsonObject {
             put("model", model)
@@ -63,7 +65,8 @@ class CodexClient(private val sessionId: String = UUID.randomUUID().toString()) 
         var refreshed = false
         while (true) {
             try {
-                return send(body)
+                if (attempt > 0 || refreshed) onTextDelta?.invoke(null)
+                return send(body, onTextDelta)
             } catch (_: UnauthorizedException) {
                 if (refreshed) throw CodexException("Codex rejected the credentials. Sign in again.")
                 refreshed = true
@@ -82,7 +85,7 @@ class CodexClient(private val sessionId: String = UUID.randomUUID().toString()) 
 
     private class UnauthorizedException : Exception()
 
-    private suspend fun send(body: String): List<JsonObject> {
+    private suspend fun send(body: String, onTextDelta: ((String?) -> Unit)?): List<JsonObject> {
         val tokens = CodexAuth.fresh()
         val request = Request.Builder()
             .url(ENDPOINT)
@@ -100,14 +103,14 @@ class CodexClient(private val sessionId: String = UUID.randomUUID().toString()) 
                 try { awaitCancellation() } finally { call.cancel() }
             }
             try {
-                withContext(Dispatchers.IO) { readStream(call.execute()) }
+                withContext(Dispatchers.IO) { readStream(call.execute(), onTextDelta) }
             } finally {
                 canceller.cancel()
             }
         }
     }
 
-    private fun readStream(response: okhttp3.Response): List<JsonObject> = response.use {
+    private fun readStream(response: okhttp3.Response, onTextDelta: ((String?) -> Unit)?): List<JsonObject> = response.use {
         if (response.code == 401) throw UnauthorizedException()
         if (!response.isSuccessful) {
             val text = response.body.string().take(800)
@@ -130,6 +133,7 @@ class CodexClient(private val sessionId: String = UUID.randomUUID().toString()) 
             val event = runCatching { json.parseToJsonElement(data).jsonObject }.getOrNull() ?: continue
             when (event["type"]?.jsonPrimitive?.content) {
                 "response.output_item.done" -> event["item"]?.jsonObject?.let(items::add)
+                "response.output_text.delta" -> event["delta"]?.jsonPrimitive?.content?.let { onTextDelta?.invoke(it) }
                 "response.completed" -> {
                     if (BuildConfig.DEBUG) android.util.Log.d("AndroidUseTiming", "usage ${event["response"]?.jsonObject?.get("usage")?.toString()?.take(300)}")
                     return items

@@ -32,10 +32,23 @@ object TaskRunner {
 
     @Volatile internal var job: Job? = null
 
-    fun start(context: Context, task: String) {
-        if (_state.value.running) return
+    @Volatile private var onFinished: (suspend (AgentResult) -> Unit)? = null
+
+    /**
+     * Starts [task] in the foreground service. [fromHome] presses Home first (tasks typed in the app);
+     * the assistant passes false so the agent can act on whatever the user was looking at.
+     * Returns false if another task is already running.
+     */
+    fun start(context: Context, task: String, fromHome: Boolean = true, onFinished: (suspend (AgentResult) -> Unit)? = null): Boolean {
+        if (_state.value.running) return false
+        this.onFinished = onFinished
         _state.value = RunState(running = true, task = task, phase = "Starting")
-        context.startForegroundService(Intent(context, AgentService::class.java).putExtra(AgentService.EXTRA_TASK, task))
+        context.startForegroundService(
+            Intent(context, AgentService::class.java)
+                .putExtra(AgentService.EXTRA_TASK, task)
+                .putExtra(AgentService.EXTRA_FROM_HOME, fromHome),
+        )
+        return true
     }
 
     fun stop() {
@@ -50,7 +63,7 @@ object TaskRunner {
     private fun phase(text: String) = _state.update { it.copy(phase = text) }
 
     /** Runs the task and the optional WhatsApp report. Called from the service's coroutine. */
-    suspend fun execute(context: Context, task: String, onProgress: (String) -> Unit): AgentResult {
+    suspend fun execute(context: Context, task: String, fromHome: Boolean, onProgress: (String) -> Unit): AgentResult {
         val settings = Settings(context)
         val device = Device(context)
         fun agent(maxSteps: Int, task: String) = Agent(
@@ -78,7 +91,8 @@ object TaskRunner {
         val result = try {
             phase("Preparing device")
             device.prepare()?.let { error(it) }
-            device.pressKey("home")
+            if (fromHome) device.pressKey("home")
+            // Either way, give the previous screen (the app or the assistant overlay) time to get out of the way.
             delay(600)
             phase("Working on task")
             log(LogKind.Info, "Task: $task")
@@ -115,7 +129,10 @@ object TaskRunner {
         return result
     }
 
-    internal fun markFinished() {
+    internal suspend fun markFinished() {
         _state.update { if (it.running) it.copy(running = false, phase = "Stopped") else it }
+        val callback = onFinished
+        onFinished = null
+        callback?.invoke(_state.value.result ?: AgentResult(false, "Stopped before finishing"))
     }
 }
