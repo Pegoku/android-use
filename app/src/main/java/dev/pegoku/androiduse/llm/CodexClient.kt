@@ -66,14 +66,16 @@ class CodexClient(private val sessionId: String = UUID.randomUUID().toString()) 
                 refreshed = true
                 CodexAuth.fresh(force = true)
             } catch (e: CodexException) {
-                if (!e.retryable || ++attempt >= 4) throw e
-                delay(2_000L * attempt)
+                if (!e.retryable || ++attempt > MAX_RETRIES) throw e
+                delay(backoff(attempt))
             } catch (e: IOException) {
-                if (++attempt >= 4) throw CodexException("Network error: ${e.message}")
-                delay(2_000L * attempt)
+                if (++attempt > MAX_RETRIES) throw CodexException("Network error: ${e.message}")
+                delay(backoff(attempt))
             }
         }
     }
+
+    private fun backoff(attempt: Int) = minOf(30_000L, 2_000L shl (attempt - 1))
 
     private class UnauthorizedException : Exception()
 
@@ -126,19 +128,26 @@ class CodexClient(private val sessionId: String = UUID.randomUUID().toString()) 
             when (event["type"]?.jsonPrimitive?.content) {
                 "response.output_item.done" -> event["item"]?.jsonObject?.let(items::add)
                 "response.completed" -> return items
-                "response.failed", "response.incomplete" -> {
-                    val error = event["response"]?.jsonObject?.get("error") as? JsonObject
-                    val message = error?.get("message")?.jsonPrimitive?.content ?: "response did not complete"
-                    throw CodexException("Codex: $message", retryable = error?.get("code")?.jsonPrimitive?.content == "server_error")
-                }
-                "error" -> throw CodexException("Codex: ${event["message"]?.jsonPrimitive?.content ?: data.take(300)}")
+                "response.failed", "response.incomplete" ->
+                    throw streamError(event["response"]?.jsonObject?.get("error") as? JsonObject, "response did not complete")
+                "error" -> throw streamError(event["error"] as? JsonObject ?: event, data.take(300))
             }
         }
         if (items.isEmpty()) throw CodexException("Codex stream ended unexpectedly", retryable = true)
         items
     }
 
+    private fun streamError(error: JsonObject?, fallback: String): CodexException {
+        fun field(key: String) = (error?.get(key) as? kotlinx.serialization.json.JsonPrimitive)?.content
+        val message = field("message") ?: fallback
+        val code = field("code") ?: field("type")
+        val retryable = code in RETRYABLE_CODES || "overloaded" in message.lowercase() || "try again" in message.lowercase()
+        return CodexException("Codex: $message", retryable)
+    }
+
     companion object {
+        private const val MAX_RETRIES = 5
+        private val RETRYABLE_CODES = setOf("server_error", "server_is_overloaded", "slow_down", "service_unavailable_error")
         private const val ENDPOINT = "https://chatgpt.com/backend-api/codex/responses"
         private const val MODELS_ENDPOINT = "https://chatgpt.com/backend-api/codex/models?client_version=0.200.0"
 
