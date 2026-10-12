@@ -1,9 +1,9 @@
 package dev.pegoku.androiduse.shell
 
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.annotation.SuppressLint
 import android.app.UiAutomation
 import android.graphics.Rect
-import android.os.Build
 import android.os.Bundle
 import android.os.HandlerThread
 import android.os.Looper
@@ -19,9 +19,12 @@ import org.lsposed.hiddenapibypass.HiddenApiBypass
  * A persistent UiAutomation connection inside the Shizuku shell process. Much faster than
  * spawning `uiautomator dump` / `input` per action, and gives a real "wait until idle".
  */
+// Runs in the Shizuku shell process (not the app), with hidden-API checks lifted by HiddenApiBypass,
+// so the app's target-SDK restrictions on these reflective calls don't apply.
+@SuppressLint("PrivateApi", "SoonBlockedPrivateApi", "BlockedPrivateApi")
 internal class Automation {
     private val automation: UiAutomation = run {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) HiddenApiBypass.addHiddenApiExemptions("")
+        HiddenApiBypass.addHiddenApiExemptions("")
         val thread = HandlerThread("ui-automation").apply { start() }
         val connection = Class.forName("android.app.UiAutomationConnection").getDeclaredConstructor().newInstance()
         val automation = UiAutomation::class.java

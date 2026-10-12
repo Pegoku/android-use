@@ -40,6 +40,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.dynamicLightColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -81,7 +82,8 @@ class MainActivity : ComponentActivity() {
         }
         handleShare(intent)
         setContent {
-            MaterialTheme(colorScheme = dynamicLightColorScheme(this)) {
+            val colors = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) dynamicLightColorScheme(this) else lightColorScheme()
+            MaterialTheme(colorScheme = colors) {
                 Surface(Modifier.fillMaxSize()) { Screen(sharedTask) }
             }
         }

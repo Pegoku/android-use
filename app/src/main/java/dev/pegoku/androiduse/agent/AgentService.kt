@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import dev.pegoku.androiduse.R
@@ -43,7 +44,11 @@ class AgentService : Service() {
         val task = intent?.getStringExtra(EXTRA_TASK)
         if (task == null || TaskRunner.job?.isActive == true) return START_NOT_STICKY
 
-        startForeground(ID_RUN, progress("Starting…"), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(ID_RUN, progress("Starting…"), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        } else {
+            startForeground(ID_RUN, progress("Starting…"))
+        }
         @Suppress("DEPRECATION")
         wakeLock = getSystemService(PowerManager::class.java)
             .newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP, "android-use:task")

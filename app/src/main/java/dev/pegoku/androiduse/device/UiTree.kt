@@ -108,7 +108,7 @@ class UiTree(val packageName: String?, val elements: List<UiElement>) {
                         description = desc,
                         resourceId = a["resource-id"].orEmpty().substringAfter(":id/"),
                         label = label,
-                        bounds = Rect(bounds).apply { intersect(screen) },
+                        bounds = Rect().apply { setIntersect(bounds, screen) },
                         clickable = clickable,
                         longClickable = longClickable,
                         scrollable = scrollable,
