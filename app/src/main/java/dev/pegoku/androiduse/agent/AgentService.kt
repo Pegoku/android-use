@@ -49,9 +49,9 @@ class AgentService : Service() {
         if (task == null || TaskRunner.job?.isActive == true) return START_NOT_STICKY
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(ID_RUN, liveNotification(TaskRunner.state.value, null, CodexUsageStore.usage.value), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            startForeground(ID_RUN, liveNotification(TaskRunner.state.value, null, null, CodexUsageStore.usage.value), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         } else {
-            startForeground(ID_RUN, liveNotification(TaskRunner.state.value, null, CodexUsageStore.usage.value))
+            startForeground(ID_RUN, liveNotification(TaskRunner.state.value, null, null, CodexUsageStore.usage.value))
         }
         @Suppress("DEPRECATION")
         wakeLock = getSystemService(PowerManager::class.java)
@@ -61,11 +61,11 @@ class AgentService : Service() {
         scope.launch { CodexUsageStore.refresh() }
         // Keep the live notification in step with the task, at most a couple of updates per second.
         val updates = scope.launch {
-            combine(TaskRunner.state, Approvals.current, CodexUsageStore.usage) { state, approval, usage -> Triple(state, approval, usage) }
+            combine(TaskRunner.state, Approvals.current, Questions.current, CodexUsageStore.usage) { state, approval, question, usage ->
+                { if (state.running) notifications.notify(ID_RUN, liveNotification(state, approval, question, usage)) }
+            }
                 .sample(500)
-                .collect { (state, approval, usage) ->
-                    if (state.running) notifications.notify(ID_RUN, liveNotification(state, approval, usage))
-                }
+                .collect { it() }
         }
         TaskRunner.job = scope.launch {
             try {
@@ -95,9 +95,9 @@ class AgentService : Service() {
         this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE,
     )
 
-    private fun liveNotification(state: RunState, approval: ApprovalRequest?, usage: CodexUsage?): Notification =
+    private fun liveNotification(state: RunState, approval: ApprovalRequest?, question: QuestionRequest?, usage: CodexUsage?): Notification =
         LiveNotification.build(
-            this, CHANNEL_RUN, state, approval, usage,
+            this, CHANNEL_RUN, state, approval, question, usage,
             PendingIntent.getService(this, 1, Intent(this, AgentService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE),
         )
 

@@ -77,6 +77,7 @@ object TaskRunner {
         val settings = Settings(context)
         val device = Device(context)
         fun agent(maxSteps: Int, task: String) = Agent(
+            context = context,
             device = device,
             model = settings.model,
             fastModel = settings.fastModel.takeIf { it.isNotBlank() && it != settings.model },

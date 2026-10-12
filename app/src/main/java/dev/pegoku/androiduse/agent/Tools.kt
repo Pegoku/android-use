@@ -68,6 +68,30 @@ object Tools {
         }
     }
 
+    private val askUser = buildJsonObject {
+        put("type", "function")
+        put("name", "ask_user")
+        put(
+            "description",
+            "Ask the owner a question and wait for the answer (up to 10 minutes). Use it when information is missing (which contact, which account, a code), " +
+                "when something isn't working and you need help, or when a choice is genuinely theirs. Don't ask about things you can find out yourself.",
+        )
+        put("strict", true)
+        putJsonObject("parameters") {
+            put("type", "object")
+            putJsonObject("properties") {
+                putJsonObject("question") { put("type", "string"); put("description", "Short, specific question.") }
+                putJsonObject("options") {
+                    put("type", "array")
+                    put("description", "Up to 4 suggested answers the owner can tap, or an empty list for a free-text answer.")
+                    putJsonObject("items") { put("type", "string") }
+                }
+            }
+            putJsonArray("required") { add(JsonPrimitive("question")); add(JsonPrimitive("options")) }
+            put("additionalProperties", false)
+        }
+    }
+
     private fun nullable(type: String, description: String) = buildJsonObject {
         putJsonArray("type") { add(JsonPrimitive(type)); add(JsonPrimitive("null")) }
         put("description", description)
@@ -232,6 +256,18 @@ object Tools {
             "Wait until the screen stops changing (e.g. a page still loading), up to the given number of seconds, then observe again.",
             Param("seconds", "number", "Maximum seconds to wait (max 30)."),
         ))
+        add(tool(
+            "remember",
+            "Save something to long-term memory for future tasks: how a task is done in a specific app, where a setting or button lives, a reliable sequence of steps, or a preference or fact the owner told you. Not for one-off values of this task (use save_note).",
+            Param("text", "string", "Self-contained memory, e.g. \"In WhatsApp the Notes group is pinned at the top of Chats\"."),
+            Param("app", optString, "App it is about (name), or null if general."),
+        ))
+        add(tool(
+            "forget",
+            "Delete a memory (by its [id]) that turned out to be wrong or outdated.",
+            Param("id", "integer", "Memory id."),
+        ))
+        add(askUser)
         add(tool(
             "save_note",
             "Remember a fact discovered during the task (e.g. a value you will need later). Notes are repeated with every screen.",

@@ -23,10 +23,12 @@ object LiveNotification {
         channel: String,
         state: RunState,
         approval: ApprovalRequest?,
+        question: QuestionRequest?,
         usage: CodexUsage?,
         stopIntent: PendingIntent,
     ): Notification {
         val status = when {
+            question != null -> "Question: ${question.question}"
             approval != null -> "Waiting for your approval: ${approval.detail.substringBefore('\n')}"
             state.lastAction != null -> describe(state.lastAction)
             else -> state.phase.ifBlank { "Starting…" }
@@ -34,6 +36,7 @@ object LiveNotification {
         // The pill: step and how much of the tightest Codex limit is left, e.g. "S4 · 99%".
         val left = usage?.tightest?.leftPercent
         val chip = when {
+            question != null -> "Reply"
             approval != null -> "Approve"
             left != null -> "S${state.steps} · $left%"
             state.steps > 0 -> "Step ${state.steps}"

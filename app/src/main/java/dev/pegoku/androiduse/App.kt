@@ -2,6 +2,7 @@ package dev.pegoku.androiduse
 
 import android.app.Application
 import dev.pegoku.androiduse.auth.CodexAuth
+import dev.pegoku.androiduse.memory.MemoryStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -16,6 +17,7 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         CodexAuth.init(this)
+        MemoryStore.init(this)
         ShizukuShell.init()
     }
 }
