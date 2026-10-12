@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -115,21 +116,17 @@ fun AssistantOverlay(
             AnimatedVisibility(
                 visible = shown,
                 enter = slideInVertically(tween(260)) { it / 3 } + fadeIn(tween(200)),
-                modifier = Modifier.align(Alignment.BottomCenter),
+                // Insets bound the whole area, so the panel can never extend under the keyboard or bars.
+                modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding(),
             ) {
                 Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .imePadding()
-                        .padding(horizontal = 12.dp, vertical = 8.dp)
-                        // Swallow taps on the panel so they don't dismiss the overlay.
-                        .clickable(remember { MutableInteractionSource() }, indication = null) {},
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.Bottom),
                 ) {
                     if (messages.isNotEmpty()) {
                         Pill(Modifier.align(Alignment.End), Icons.Default.CloseFullscreen, "Minimize", onDismiss)
-                        ChatCard(messages, busy, onCopy, onSpeak)
+                        // Takes only the space left above the input bar, scrolling when the chat is longer.
+                        ChatCard(messages, busy, onCopy, onSpeak, Modifier.weight(1f, fill = false))
                     } else if (screen != null) {
                         ScreenChip(screen, shareScreen) { shareScreen = !shareScreen }
                     }
@@ -181,13 +178,24 @@ private fun ScreenChip(screen: SharedScreen, selected: Boolean, onToggle: () -> 
 }
 
 @Composable
-private fun ChatCard(messages: List<ChatMessage>, busy: Boolean, onCopy: (String) -> Unit, onSpeak: (String) -> Unit) {
+private fun ChatCard(
+    messages: List<ChatMessage>,
+    busy: Boolean,
+    onCopy: (String) -> Unit,
+    onSpeak: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val listState = rememberLazyListState()
-    val maxHeight = (LocalConfiguration.current.screenHeightDp * 0.6f).dp
+    val maxHeight = (LocalConfiguration.current.screenHeightDp * 0.7f).dp
     LaunchedEffect(messages.size, messages.lastOrNull()?.text?.length) {
         listState.animateScrollToItem(maxOf(0, messages.size))
     }
-    Surface(shape = RoundedCornerShape(28.dp), color = CardColor, modifier = Modifier.fillMaxWidth()) {
+    Surface(
+        shape = RoundedCornerShape(28.dp),
+        color = CardColor,
+        // Swallow taps on the card so they don't fall through and dismiss the overlay.
+        modifier = modifier.fillMaxWidth().clickable(remember { MutableInteractionSource() }, indication = null) {},
+    ) {
         LazyColumn(
             state = listState,
             modifier = Modifier.heightIn(max = maxHeight).padding(horizontal = 20.dp),
@@ -284,7 +292,11 @@ private fun InputBar(
             text = ""
         }
     }
-    Surface(shape = RoundedCornerShape(36.dp), color = BarColor, modifier = Modifier.fillMaxWidth()) {
+    Surface(
+        shape = RoundedCornerShape(36.dp),
+        color = BarColor,
+        modifier = Modifier.fillMaxWidth().clickable(remember { MutableInteractionSource() }, indication = null) {},
+    ) {
         Row(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             if (screen != null) {
                 // Attached screen: thumbnail with a tap-to-remove affordance.
