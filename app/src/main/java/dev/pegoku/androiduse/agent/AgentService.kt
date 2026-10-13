@@ -10,10 +10,8 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
-import dev.pegoku.androiduse.R
 import dev.pegoku.androiduse.llm.CodexUsage
 import dev.pegoku.androiduse.llm.CodexUsageStore
-import dev.pegoku.androiduse.ui.MainActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -37,7 +35,7 @@ class AgentService : Service() {
         super.onCreate()
         notifications = getSystemService(NotificationManager::class.java)
         notifications.createNotificationChannel(NotificationChannel(CHANNEL_RUN, "Running task", NotificationManager.IMPORTANCE_LOW))
-        notifications.createNotificationChannel(NotificationChannel(CHANNEL_RESULT, "Task results", NotificationManager.IMPORTANCE_DEFAULT))
+        ResultNotification.createChannel(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -70,7 +68,7 @@ class AgentService : Service() {
         TaskRunner.job = scope.launch {
             try {
                 val result = TaskRunner.execute(this@AgentService, task, intent.getBooleanExtra(EXTRA_FROM_HOME, true))
-                notifications.notify(ID_RESULT, resultNotification(if (result.success) "Task done" else "Task failed", result.summary))
+                ResultNotification.show(this@AgentService, task, result)
             } finally {
                 withContext(NonCancellable) {
                     // Deliver the result first: the assistant reopens itself through the shell service.
@@ -91,32 +89,17 @@ class AgentService : Service() {
         super.onDestroy()
     }
 
-    private fun openApp() = PendingIntent.getActivity(
-        this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE,
-    )
-
     private fun liveNotification(state: RunState, approval: ApprovalRequest?, question: QuestionRequest?, usage: CodexUsage?): Notification =
         LiveNotification.build(
             this, CHANNEL_RUN, state, approval, question, usage,
             PendingIntent.getService(this, 1, Intent(this, AgentService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE),
         )
 
-    private fun resultNotification(title: String, text: String): Notification = Notification.Builder(this, CHANNEL_RESULT)
-        .setSmallIcon(R.drawable.ic_notification)
-        .setContentTitle(title)
-        .setContentText(text)
-        .setStyle(Notification.BigTextStyle().bigText(text))
-        .setContentIntent(openApp())
-        .setAutoCancel(true)
-        .build()
-
     companion object {
         const val EXTRA_TASK = "task"
         const val EXTRA_FROM_HOME = "from_home"
         private const val ACTION_STOP = "dev.pegoku.androiduse.STOP"
         private const val CHANNEL_RUN = "run"
-        private const val CHANNEL_RESULT = "result"
         private const val ID_RUN = 1
-        private const val ID_RESULT = 2
     }
 }

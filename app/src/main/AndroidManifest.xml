@@ -86,6 +86,9 @@
         <receiver
             android:name=".agent.Questions$Receiver"
             android:exported="false" />
+        <receiver
+            android:name=".agent.ResultNotification$Receiver"
+            android:exported="false" />
 
         <provider
             android:name="rikka.shizuku.ShizukuProvider"

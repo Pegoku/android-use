@@ -8,6 +8,7 @@ import dev.pegoku.androiduse.Settings
 import dev.pegoku.androiduse.agent.AgentResult
 import dev.pegoku.androiduse.agent.TaskRunner
 import dev.pegoku.androiduse.agent.Questions
+import dev.pegoku.androiduse.agent.ResultNotification
 import kotlinx.coroutines.flow.filterNotNull
 import dev.pegoku.androiduse.llm.CodexClient
 import dev.pegoku.androiduse.shell.ShizukuShell
@@ -51,6 +52,8 @@ data class ChatMessage(
     val image: Bitmap? = null,
     /** For [ChatRole.Task]: null while running, then whether it succeeded. */
     val success: Boolean? = null,
+    /** For [ChatRole.Task]: the agent's own summary of what happened, once it's finished. */
+    val detail: String? = null,
     val streaming: Boolean = false,
 )
 
@@ -93,6 +96,32 @@ object ChatEngine {
         _busy.value = false
     }
 
+    /**
+     * Runs [task] as part of the conversation, as if the user had asked for it here: the task shows
+     * in the chat, and when it ends the assistant reports the outcome and takes follow-ups.
+     * Used by the app's composer and shared text. Returns false if a task is already running.
+     */
+    fun runTask(context: Context, task: String, fromHome: Boolean = true): Boolean {
+        if (_busy.value || task.isBlank() || TaskRunner.state.value.running) return false
+        val app = context.applicationContext
+        add(ChatMessage(ids.incrementAndGet(), ChatRole.User, task.trim()))
+        history += buildJsonObject {
+            put("type", "message")
+            put("role", "user")
+            putJsonArray("content") { add(buildJsonObject { put("type", "input_text"); put("text", task.trim()) }) }
+        }
+        // Stand in for the operate_phone call the model would have made, so its output fits the transcript.
+        val callId = "local_${ids.incrementAndGet()}"
+        history += buildJsonObject {
+            put("type", "function_call")
+            put("call_id", callId)
+            put("name", "operate_phone")
+            put("arguments", buildJsonObject { put("task", task.trim()) }.toString())
+        }
+        _busy.value = true
+        return startTask(app, callId, task.trim(), fromHome)
+    }
+
     fun stop() {
         job?.cancel()
         TaskRunner.stop()
@@ -101,6 +130,7 @@ object ChatEngine {
     fun send(context: Context, text: String, screen: SharedScreen?) {
         if (_busy.value || text.isBlank()) return
         val app = context.applicationContext
+        ResultNotification.dismiss(app)
         add(ChatMessage(ids.incrementAndGet(), ChatRole.User, text.trim(), image = screen?.thumbnail))
         history += buildJsonObject {
             put("type", "message")
@@ -154,7 +184,12 @@ object ChatEngine {
                 val call = output.firstOrNull { it["type"]?.jsonPrimitive?.content == "function_call" }
                 when (call?.get("name")?.jsonPrimitive?.content) {
                     null -> _busy.value = false
-                    "operate_phone" -> startTask(context, call)
+                    "operate_phone" -> startTask(
+                        context,
+                        call["call_id"]!!.jsonPrimitive.content,
+                        runCatching { Json.parseToJsonElement(call["arguments"]!!.jsonPrimitive.content).jsonObject["task"]!!.jsonPrimitive.content }.getOrDefault(""),
+                        fromHome = false,
+                    )
                     else -> {
                         // Memory tools run instantly; hand the result back so the model can reply.
                         history += buildJsonObject {
@@ -194,16 +229,16 @@ object ChatEngine {
         }
     }.getOrElse { "Error: ${it.message}" }
 
-    private fun startTask(context: Context, call: JsonObject) {
-        val callId = call["call_id"]!!.jsonPrimitive.content
-        val task = runCatching {
-            Json.parseToJsonElement(call["arguments"]!!.jsonPrimitive.content).jsonObject["task"]!!.jsonPrimitive.content
-        }.getOrDefault("")
+    /**
+     * Hands [task] to the agent. The overlay steps aside while it runs and comes back with the
+     * outcome; a result notification offers a reply box and a new chat for when it isn't open.
+     */
+    private fun startTask(context: Context, callId: String, task: String, fromHome: Boolean): Boolean {
         val statusId = ids.incrementAndGet()
         add(ChatMessage(statusId, ChatRole.Task, task))
-        val started = TaskRunner.start(context, task, fromHome = false) { result ->
+        val started = TaskRunner.start(context, task, fromHome = fromHome) { result ->
             questionWatcher?.cancel()
-            upsert(ChatMessage(statusId, ChatRole.Task, task, success = result.success))
+            upsert(ChatMessage(statusId, ChatRole.Task, task, success = result.success, detail = result.summary))
             history += buildJsonObject {
                 put("type", "function_call_output")
                 put("call_id", callId)
@@ -220,7 +255,7 @@ object ChatEngine {
                 Questions.current.filterNotNull().collect { reopen(context) }
             }
         } else {
-            upsert(ChatMessage(statusId, ChatRole.Task, task, success = false))
+            upsert(ChatMessage(statusId, ChatRole.Task, task, success = false, detail = "Another task is already running."))
             history += buildJsonObject {
                 put("type", "function_call_output")
                 put("call_id", callId)
@@ -228,6 +263,7 @@ object ChatEngine {
             }
             respond(context)
         }
+        return started
     }
 
     /** Brings the overlay back with the outcome. The shell can start activities from the background. */

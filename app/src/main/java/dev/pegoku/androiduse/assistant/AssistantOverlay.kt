@@ -50,6 +50,8 @@ import androidx.compose.material.icons.outlined.AddAPhoto
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.CircularProgressIndicator
@@ -144,6 +146,7 @@ fun AssistantOverlay(
                         Header(onDismiss)
                         // Takes only the space left above the input bar, scrolling when the chat is longer.
                         ChatCard(messages, busy, onCopy, onSpeak, Modifier.weight(1f, fill = false))
+                        if (!busy && question == null) FollowUps(messages) { onSend(it, false) }
                     } else {
                         Welcome(
                             screen = screen,
@@ -160,6 +163,7 @@ fun AssistantOverlay(
                         // A pending question takes the input, even while the task it belongs to is running.
                         busy = busy && question == null,
                         answering = question != null,
+                        afterTask = messages.lastOrNull { it.role == ChatRole.Task }?.success != null,
                         listening = listening,
                         partialSpeech = partialSpeech,
                         screen = screen?.takeIf { shareScreen },
@@ -248,6 +252,29 @@ private fun Welcome(
                 Suggestion("Turn on do not disturb") { onSuggestion("Turn on do not disturb", false) }
             }
         }
+    }
+}
+
+/**
+ * One-tap follow-ups once a task has ended and the user hasn't said anything since: retry or ask
+ * what happened after a failure, or move on to a new chat.
+ */
+@Composable
+private fun FollowUps(messages: List<ChatMessage>, onSend: (String) -> Unit) {
+    val lastTask = messages.lastOrNull { it.role == ChatRole.Task } ?: return
+    if (lastTask.success == null) return
+    if (messages.takeLastWhile { it.id != lastTask.id }.any { it.role == ChatRole.User }) return
+    Row(
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (lastTask.success == false) {
+            Suggestion("Try again") { onSend("Try again.") }
+            Suggestion("What went wrong?") { onSend("What went wrong?") }
+        } else {
+            Suggestion("What did you do?") { onSend("What exactly did you do?") }
+        }
+        Suggestion("New chat", onClick = ChatEngine::newChat)
     }
 }
 
@@ -413,30 +440,49 @@ private fun UserMessage(message: ChatMessage) {
     }
 }
 
+/** A task in the conversation: spinner while it runs, then the outcome; tap to see what the agent reported. */
 @Composable
 private fun TaskRow(message: ChatMessage) {
     val colors = MaterialTheme.colorScheme
-    Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(colors.surfaceContainerHighest).padding(start = 14.dp, end = 6.dp, top = 12.dp, bottom = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    var expanded by remember { mutableStateOf(false) }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(colors.surfaceContainerHighest)
+            .clickable(enabled = message.detail != null) { expanded = !expanded }
+            .padding(start = 14.dp, end = 6.dp, top = 12.dp, bottom = 12.dp),
     ) {
-        when (message.success) {
-            null -> CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.5.dp, color = colors.primary)
-            true -> Icon(Icons.Outlined.CheckCircle, null, tint = colors.success, modifier = Modifier.size(22.dp))
-            false -> Icon(Icons.Outlined.ErrorOutline, null, tint = colors.error, modifier = Modifier.size(22.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            when (message.success) {
+                null -> CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.5.dp, color = colors.primary)
+                true -> Icon(Icons.Outlined.CheckCircle, null, tint = colors.success, modifier = Modifier.size(22.dp))
+                false -> Icon(Icons.Outlined.ErrorOutline, null, tint = colors.error, modifier = Modifier.size(22.dp))
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    when (message.success) { null -> "Working on your phone"; true -> "Done on your phone"; false -> "Couldn't finish" },
+                    style = MaterialTheme.typography.titleSmall, color = colors.onSurface,
+                )
+                Text(message.text, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant, maxLines = if (expanded) Int.MAX_VALUE else 3)
+            }
+            when {
+                message.success == null -> IconButton(onClick = ChatEngine::stop) { Icon(Icons.Default.Stop, "Stop", tint = colors.onSurface) }
+                message.detail != null -> Icon(
+                    if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, if (expanded) "Hide details" else "Show details",
+                    tint = colors.onSurfaceVariant, modifier = Modifier.padding(8.dp),
+                )
+                else -> Spacer(Modifier.width(8.dp))
+            }
         }
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        if (expanded && message.detail != null) {
             Text(
-                when (message.success) { null -> "Working on your phone"; true -> "Done on your phone"; false -> "Couldn't finish" },
-                style = MaterialTheme.typography.titleSmall, color = colors.onSurface,
+                message.detail,
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.onSurface,
+                modifier = Modifier.padding(start = 34.dp, end = 8.dp, top = 10.dp),
             )
-            Text(message.text, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant, maxLines = 3)
-        }
-        if (message.success == null) {
-            IconButton(onClick = ChatEngine::stop) { Icon(Icons.Default.Stop, "Stop", tint = colors.onSurface) }
-        } else {
-            Spacer(Modifier.width(8.dp))
         }
     }
 }
@@ -445,6 +491,7 @@ private fun TaskRow(message: ChatMessage) {
 private fun InputBar(
     busy: Boolean,
     answering: Boolean,
+    afterTask: Boolean,
     listening: Boolean,
     partialSpeech: String,
     screen: SharedScreen?,
@@ -495,6 +542,7 @@ private fun InputBar(
                             busy -> "Working…"
                             answering -> "Type your answer"
                             screen != null -> "Ask about this screen"
+                            afterTask -> "Follow up or give feedback"
                             else -> "Ask Android Use"
                         },
                         fontSize = 17.sp, color = colors.onSurfaceVariant,

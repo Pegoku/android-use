@@ -112,6 +112,7 @@ import dev.pegoku.androiduse.agent.Questions
 import dev.pegoku.androiduse.agent.RunState
 import dev.pegoku.androiduse.agent.TaskRunner
 import dev.pegoku.androiduse.assistant.AssistantActivity
+import dev.pegoku.androiduse.assistant.ChatEngine
 import dev.pegoku.androiduse.auth.CodexAuth
 import dev.pegoku.androiduse.auth.CodexTokens
 import dev.pegoku.androiduse.llm.CodexUsageStore
@@ -234,7 +235,7 @@ private fun HomeScreen(settings: Settings, sharedTask: MutableState<String?>, on
                         run = run,
                         ready = ready,
                         reportChat = reportChat,
-                        onRun = { TaskRunner.start(context, task.trim()) },
+                        onRun = { ChatEngine.runTask(context, task.trim()) },
                     )
                 }
             }

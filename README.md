@@ -58,6 +58,12 @@ assistant over whatever app you're in:
 - **Ask about the screen:** the screen is captured before the overlay draws. Tap **Ask about
   screen** (or **+**) to attach it to your next message, so you can say things like "what's this?"
   or "reply to her".
+- **When a task ends:** the overlay comes back over whatever is on screen and says whether it worked;
+  tap the task row for the agent's own account. The reply box is ready for follow-ups ("that's the
+  wrong contact", "now do the same for Anna") and one-tap chips offer **Try again**, **What went
+  wrong?** or **New chat**. If the overlay isn't open, a notification says what happened, with
+  **Reply** (type a follow-up right there) and **New chat** actions. Tasks typed in the app or
+  shared from another app join the same conversation.
 - **Other controls:** a mic for voice input, read-aloud, copy, new chat and minimize.
 
 Chat replies use the fast model (about 1 s until the reply starts streaming). Phone tasks use the
