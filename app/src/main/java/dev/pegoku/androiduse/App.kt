@@ -2,6 +2,7 @@ package dev.pegoku.androiduse
 
 import android.app.Application
 import dev.pegoku.androiduse.auth.CodexAuth
+import dev.pegoku.androiduse.assistant.ChatStore
 import dev.pegoku.androiduse.memory.MemoryStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -18,6 +19,7 @@ class App : Application() {
         super.onCreate()
         CodexAuth.init(this)
         MemoryStore.init(this)
+        ChatStore.init(this)
         ShizukuShell.init()
     }
 }

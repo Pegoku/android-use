@@ -64,6 +64,8 @@ assistant over whatever app you're in:
   wrong?** or **New chat**. If the overlay isn't open, a notification says what happened, with
   **Reply** (type a follow-up right there) and **New chat** actions. Tasks typed in the app or
   shared from another app join the same conversation.
+- **Recent chats:** the last conversations are listed when you open a new chat; tap one to pick it
+  up where it left off (screenshots aren't kept). Delete any with the bin icon.
 - **Other controls:** a mic for voice input, read-aloud, copy, new chat and minimize.
 
 Chat replies use the fast model (about 1 s until the reply starts streaming). Phone tasks use the

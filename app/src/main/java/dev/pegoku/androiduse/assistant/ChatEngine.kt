@@ -88,12 +88,75 @@ object ChatEngine {
     private var job: Job? = null
     private val client = CodexClient()
 
+    /** Which saved chat this conversation is (0 until it has been saved for the first time). */
+    private var chatId = 0L
+
     fun newChat() {
         if (TaskRunner.state.value.running) return
         job?.cancel()
+        persist()
+        chatId = 0
         history.clear()
         _messages.value = emptyList()
         _busy.value = false
+    }
+
+    /** Picks up a saved conversation where it left off. Ignored while something is running. */
+    fun open(id: Long) {
+        if (TaskRunner.state.value.running || _busy.value) return
+        val chat = ChatStore.get(id) ?: return
+        job?.cancel()
+        persist()
+        chatId = chat.id
+        history.clear()
+        history += chat.history
+        _messages.value = chat.messages.map { ChatMessage(it.id, it.role, it.text, success = it.success, detail = it.detail) }
+        ids.updateAndGet { maxOf(it, chat.messages.maxOfOrNull { m -> m.id } ?: 0) }
+    }
+
+    fun delete(id: Long) {
+        ChatStore.remove(id)
+        if (id == chatId) {
+            chatId = 0
+            if (!TaskRunner.state.value.running) {
+                job?.cancel()
+                history.clear()
+                _messages.value = emptyList()
+                _busy.value = false
+            }
+        }
+    }
+
+    /**
+     * Writes the conversation to [ChatStore]. Called once something settled happens (a message
+     * sent, a reply finished, a task ended) rather than on every streamed token.
+     */
+    private fun persist() {
+        val messages = _messages.value.filter { !it.streaming }
+        val title = messages.firstOrNull { it.role == ChatRole.User }?.text ?: return
+        if (chatId == 0L) chatId = System.currentTimeMillis()
+        val chat = SavedChat(
+            id = chatId,
+            title = title.replace('\n', ' ').take(80),
+            updatedAt = System.currentTimeMillis(),
+            messages = messages.map { SavedMessage(it.id, it.role, it.text, it.success, it.detail) },
+            history = history.map(::withoutImages),
+        )
+        App.scope.launch(Dispatchers.IO) { runCatching { ChatStore.save(chat) } }
+    }
+
+    /** Screenshots are big and only matter for the question they came with, so they aren't saved. */
+    private fun withoutImages(item: JsonElement): JsonElement {
+        val obj = item as? JsonObject ?: return item
+        val content = obj["content"]?.jsonArray ?: return item
+        if (content.none { (it as? JsonObject)?.get("type")?.jsonPrimitive?.content == "input_image" }) return item
+        return JsonObject(obj + ("content" to buildJsonArray {
+            content.forEach { part ->
+                if ((part as? JsonObject)?.get("type")?.jsonPrimitive?.content == "input_image") {
+                    add(buildJsonObject { put("type", "input_text"); put("text", "[Screenshot not kept in the saved chat.]") })
+                } else add(part)
+            }
+        }))
     }
 
     /**
@@ -119,6 +182,7 @@ object ChatEngine {
             put("arguments", buildJsonObject { put("task", task.trim()) }.toString())
         }
         _busy.value = true
+        persist()
         return startTask(app, callId, task.trim(), fromHome)
     }
 
@@ -150,6 +214,7 @@ object ChatEngine {
                 }
             }
         }
+        persist()
         respond(app)
     }
 
@@ -183,7 +248,7 @@ object ChatEngine {
 
                 val call = output.firstOrNull { it["type"]?.jsonPrimitive?.content == "function_call" }
                 when (call?.get("name")?.jsonPrimitive?.content) {
-                    null -> _busy.value = false
+                    null -> { _busy.value = false; persist() }
                     "operate_phone" -> startTask(
                         context,
                         call["call_id"]!!.jsonPrimitive.content,
@@ -203,10 +268,12 @@ object ChatEngine {
             } catch (e: CancellationException) {
                 upsert(ChatMessage(replyId, ChatRole.Assistant, reply.toString().ifBlank { "Stopped." }))
                 _busy.value = false
+                persist()
                 throw e
             } catch (e: Exception) {
                 upsert(ChatMessage(replyId, ChatRole.Assistant, "Sorry, something went wrong: ${e.message}"))
                 _busy.value = false
+                persist()
             }
         }
     }
@@ -244,6 +311,7 @@ object ChatEngine {
                 put("call_id", callId)
                 put("output", (if (result.success) "Done. " else "Failed. ") + result.summary)
             }
+            persist()
             reopen(context)
             withContext(Dispatchers.Main) { respond(context) }
         }

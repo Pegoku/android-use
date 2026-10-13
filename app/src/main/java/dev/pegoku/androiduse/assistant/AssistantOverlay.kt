@@ -47,7 +47,9 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.AddAPhoto
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.ExpandLess
@@ -92,9 +94,11 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import android.text.format.DateUtils
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.pegoku.androiduse.agent.QuestionRequest
@@ -250,6 +254,41 @@ private fun Welcome(
                 Suggestion("Set a timer for 10 minutes") { onSuggestion("Set a timer for 10 minutes", false) }
                 Suggestion("What's the weather today?") { onSuggestion("What's the weather today?", false) }
                 Suggestion("Turn on do not disturb") { onSuggestion("Turn on do not disturb", false) }
+            }
+            RecentChats()
+        }
+    }
+}
+
+/** The last few conversations, to pick one up again; swipe-free: a small delete button per row. */
+@Composable
+private fun RecentChats() {
+    val chats by ChatStore.chats.collectAsStateWithLifecycle()
+    if (chats.isEmpty()) return
+    val colors = MaterialTheme.colorScheme
+    Column(Modifier.padding(horizontal = 14.dp)) {
+        Text("Recent", style = MaterialTheme.typography.labelLarge, color = colors.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp))
+        chats.take(5).forEach { chat ->
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { ChatEngine.open(chat.id) }
+                    .padding(start = 4.dp, top = 2.dp, bottom = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Outlined.ChatBubbleOutline, null, tint = colors.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(chat.title, style = MaterialTheme.typography.bodyMedium, color = colors.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        DateUtils.getRelativeTimeSpanString(chat.updatedAt, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS).toString(),
+                        style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant,
+                    )
+                }
+                IconButton(onClick = { ChatEngine.delete(chat.id) }) {
+                    Icon(Icons.Outlined.Delete, "Delete chat", tint = colors.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                }
             }
         }
     }
