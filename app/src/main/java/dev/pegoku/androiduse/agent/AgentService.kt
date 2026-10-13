@@ -61,7 +61,7 @@ class AgentService : Service() {
         scope.launch { CodexUsageStore.refresh() }
         // Keep the live notification in step with the task, at most a couple of updates per second.
         val updates = scope.launch {
-            combine(TaskRunner.state, Approvals.current, Questions.current, CodexUsageStore.usage) { state, approval, question, usage ->
+            combine(TaskRunner.state, Approvals.current, Questions.current, CodexUsageStore.usage, TaskRunner.paused) { state, approval, question, usage, _ ->
                 { if (state.running) notifications.notify(ID_RUN, liveNotification(state, approval, question, usage)) }
             }
                 .sample(500)

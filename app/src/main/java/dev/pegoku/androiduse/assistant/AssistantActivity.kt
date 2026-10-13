@@ -20,6 +20,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
+import dev.pegoku.androiduse.agent.TaskRunner
 import dev.pegoku.androiduse.device.Device
 import dev.pegoku.androiduse.shell.ShizukuShell
 import dev.pegoku.androiduse.shell.ShizukuState
@@ -148,6 +149,17 @@ class AssistantActivity : ComponentActivity() {
                 tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "reply")
             }
         }
+    }
+
+    // The overlay covers the screen the agent works on, so a running task waits while it's in front.
+    override fun onResume() {
+        super.onResume()
+        TaskRunner.setPaused(true)
+    }
+
+    override fun onPause() {
+        TaskRunner.setPaused(false)
+        super.onPause()
     }
 
     override fun onDestroy() {

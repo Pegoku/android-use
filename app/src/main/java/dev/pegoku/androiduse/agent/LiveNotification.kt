@@ -10,6 +10,7 @@ import android.os.Build
 import dev.pegoku.androiduse.R
 import dev.pegoku.androiduse.llm.CodexUsage
 import dev.pegoku.androiduse.ui.MainActivity
+import dev.pegoku.androiduse.assistant.AssistantActivity
 
 /**
  * The ongoing notification for a running task. On Android 16+ it asks to be promoted to a
@@ -29,6 +30,7 @@ object LiveNotification {
     ): Notification {
         val status = when {
             question != null -> "Question: ${question.question}"
+            TaskRunner.paused.value -> "Paused while you're in the assistant"
             approval != null -> "Waiting for your approval: ${approval.detail.substringBefore('\n')}"
             state.lastAction != null -> describe(state.lastAction)
             else -> state.phase.ifBlank { "Starting…" }
@@ -56,7 +58,12 @@ object LiveNotification {
             .setOnlyAlertOnce(true)
             .setCategory(Notification.CATEGORY_PROGRESS)
             .setContentIntent(
-                PendingIntent.getActivity(context, 0, Intent(context, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE),
+                // Tasks started from the assistant lead back to that chat; others to the app's log.
+                if (state.fromAssistant) {
+                    PendingIntent.getActivity(context, 2, AssistantActivity.intent(context), PendingIntent.FLAG_IMMUTABLE)
+                } else {
+                    PendingIntent.getActivity(context, 0, Intent(context, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
+                },
             )
             .addAction(Notification.Action.Builder(null, "Stop", stopIntent).build())
         state.screen?.let { builder.setLargeIcon(Icon.createWithBitmap(thumbnail(it))) }

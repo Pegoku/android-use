@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.first
 
 data class LogLine(val kind: LogKind, val text: String, val time: Long = System.currentTimeMillis())
 
@@ -26,6 +27,8 @@ data class RunState(
     /** Actions taken so far and the most recent one, for the live notification. */
     val steps: Int = 0,
     val lastAction: String? = null,
+    /** Started from the assistant chat: its notification leads back to the chat instead of the app. */
+    val fromAssistant: Boolean = false,
 )
 
 /** Process-wide holder for the current task, shared between [AgentService] and the UI. */
@@ -45,7 +48,7 @@ object TaskRunner {
     fun start(context: Context, task: String, fromHome: Boolean = true, onFinished: (suspend (AgentResult) -> Unit)? = null): Boolean {
         if (_state.value.running) return false
         this.onFinished = onFinished
-        _state.value = RunState(running = true, task = task, phase = "Starting")
+        _state.value = RunState(running = true, task = task, phase = "Starting", fromAssistant = !fromHome)
         context.startForegroundService(
             Intent(context, AgentService::class.java)
                 .putExtra(AgentService.EXTRA_TASK, task)
@@ -55,7 +58,23 @@ object TaskRunner {
     }
 
     fun stop() {
+        _paused.value = false
         job?.cancel()
+    }
+
+    /**
+     * Paused while the assistant overlay is in front: it covers the screen the agent works on.
+     * The agent checks before each step and carries on as soon as the overlay goes away.
+     */
+    private val _paused = MutableStateFlow(false)
+    val paused: StateFlow<Boolean> = _paused.asStateFlow()
+
+    fun setPaused(paused: Boolean) {
+        _paused.value = paused && _state.value.running
+    }
+
+    suspend fun awaitResumed() {
+        _paused.first { !it }
     }
 
     private fun log(kind: LogKind, text: String) {

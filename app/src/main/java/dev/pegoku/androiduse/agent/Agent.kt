@@ -67,6 +67,11 @@ class Agent(
         }
         var nudges = 0
         for (step in 1..maxSteps) {
+            if (TaskRunner.paused.value) {
+                log(LogKind.Info, "Paused while the assistant is open")
+                TaskRunner.awaitResumed()
+                log(LogKind.Info, "Resumed")
+            }
             val t0 = System.currentTimeMillis()
             history += observe(step)
             val t1 = System.currentTimeMillis()
@@ -91,7 +96,22 @@ class Agent(
             if (calls.isEmpty()) {
                 if (++nudges > 3) return AgentResult(false, "The model stopped without finishing the task.")
                 escalate("the model stopped using tools")
-                history += Raw(userMessage("Keep going using the tools. Do not ask me questions; if the task is complete or impossible, call finish."))
+                history += Raw(userMessage("Keep going using the tools. If you need something from the owner, use ask_user; if the task is complete or impossible, call finish."))
+                continue
+            }
+            if (TaskRunner.paused.value) {
+                // The owner opened the assistant while this step was being planned, so it was planned against
+                // a screen showing the overlay. Wait, then look again instead of acting on stale plans.
+                log(LogKind.Info, "Paused while the assistant is open")
+                TaskRunner.awaitResumed()
+                log(LogKind.Info, "Resumed")
+                calls.forEach { call ->
+                    history += Raw(buildJsonObject {
+                        put("type", "function_call_output")
+                        put("call_id", call["call_id"]!!.jsonPrimitive.content)
+                        put("output", "Not executed: the owner opened the assistant meanwhile. Look at the new screen and continue.")
+                    })
+                }
                 continue
             }
             nudges = 0
