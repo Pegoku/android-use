@@ -701,12 +701,16 @@ private fun powerLongPress(context: Context): Int =
 
 private fun powerOpensAssistant(context: Context): Boolean = powerLongPress(context) == 5
 
-/** Package currently holding the assistant role, via Shizuku (RoleManager can't list other apps' roles). */
-private suspend fun currentAssistant(): String? =
-    ShizukuShell.run("cmd role get-role-holders --user 0 android.app.role.ASSISTANT").output.trim().lines().firstOrNull()?.trim()?.takeIf { it.isNotEmpty() }
-
-private fun appLabel(context: Context, packageName: String): String =
-    runCatching { context.packageManager.getApplicationInfo(packageName, 0).loadLabel(context.packageManager).toString() }.getOrDefault(packageName)
+/** Opens the system's "Digital assistant app" picker, falling back to the default-apps page. */
+private fun openAssistantSettings(context: Context) {
+    val intents = listOf(
+        Intent(android.provider.Settings.ACTION_VOICE_INPUT_SETTINGS),
+        Intent(android.provider.Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS),
+        Intent(android.provider.Settings.ACTION_SETTINGS),
+    )
+    val intent = intents.first { it.resolveActivity(context.packageManager) != null || it == intents.last() }
+    context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+}
 
 private fun isDefaultAssistant(context: Context): Boolean =
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -748,8 +752,6 @@ private fun AssistantCard(shizuku: ShizukuState) {
                     scope.launch {
                         val role = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && shizuku == ShizukuState.Ready) {
                             runCatching {
-                                // Remember who had the role (e.g. Gemini) so it can be restored.
-                                currentAssistant()?.takeIf { it != context.packageName }?.let { settings.previousAssistant = it }
                                 ShizukuShell.run("cmd role add-role-holder --user 0 android.app.role.ASSISTANT ${context.packageName}")
                             }.getOrNull()
                         } else null
@@ -757,7 +759,7 @@ private fun AssistantCard(shizuku: ShizukuState) {
                         if (!isDefault) {
                             message = role?.output?.takeIf { it.isNotBlank() }?.let { "Couldn't set it automatically ($it). Pick Android Use as the digital assistant app." }
                                 ?: "Pick Android Use as the digital assistant app."
-                            context.startActivity(Intent(android.provider.Settings.ACTION_VOICE_INPUT_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                            openAssistantSettings(context)
                         } else {
                             message = null
                         }
@@ -782,33 +784,8 @@ private fun AssistantCard(shizuku: ShizukuState) {
                     })
                 }
             }
-            if (isDefault) {
-                // Undo: give the assistant role (and long-press power) back to what was there before.
-                val previous = settings.previousAssistant
-                val previousLabel = previous?.let { appLabel(context, it) }
-                TextButton(onClick = {
-                    scope.launch {
-                        if (shizuku == ShizukuState.Ready && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                            runCatching {
-                                if (previous != null) {
-                                    ShizukuShell.run("cmd role add-role-holder --user 0 android.app.role.ASSISTANT $previous")
-                                } else {
-                                    ShizukuShell.run("cmd role remove-role-holder --user 0 android.app.role.ASSISTANT ${context.packageName}")
-                                }
-                                if (powerOpensAssistant(context)) {
-                                    ShizukuShell.run("settings put global $POWER_LONG_PRESS ${settings.previousPowerLongPress ?: 1}")
-                                }
-                            }
-                            isDefault = isDefaultAssistant(context)
-                            powerOpens = powerOpensAssistant(context)
-                            message = if (isDefault) "Couldn't switch back automatically. Pick your assistant here." else null
-                        }
-                        if (isDefault) {
-                            context.startActivity(Intent(android.provider.Settings.ACTION_VOICE_INPUT_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                        }
-                    }
-                }) { Text(if (previousLabel != null) "Switch back to $previousLabel" else "Stop being the default assistant") }
-            }
+            // Android's own page for picking the digital assistant (switch back to Gemini, etc.).
+            OutlinedButton(onClick = { openAssistantSettings(context) }) { Text("Change assistant") }
             message?.let { Hint(it) }
         }
     }
