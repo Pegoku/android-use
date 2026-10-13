@@ -696,8 +696,17 @@ private fun ShizukuChip() {
 
 private const val POWER_LONG_PRESS = "power_button_long_press"
 
-private fun powerOpensAssistant(context: Context): Boolean =
-    android.provider.Settings.Global.getInt(context.contentResolver, POWER_LONG_PRESS, 1) == 5
+private fun powerLongPress(context: Context): Int =
+    android.provider.Settings.Global.getInt(context.contentResolver, POWER_LONG_PRESS, 1)
+
+private fun powerOpensAssistant(context: Context): Boolean = powerLongPress(context) == 5
+
+/** Package currently holding the assistant role, via Shizuku (RoleManager can't list other apps' roles). */
+private suspend fun currentAssistant(): String? =
+    ShizukuShell.run("cmd role get-role-holders --user 0 android.app.role.ASSISTANT").output.trim().lines().firstOrNull()?.trim()?.takeIf { it.isNotEmpty() }
+
+private fun appLabel(context: Context, packageName: String): String =
+    runCatching { context.packageManager.getApplicationInfo(packageName, 0).loadLabel(context.packageManager).toString() }.getOrDefault(packageName)
 
 private fun isDefaultAssistant(context: Context): Boolean =
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -713,6 +722,7 @@ private fun AssistantCard(shizuku: ShizukuState) {
     val scope = rememberCoroutineScope()
     var isDefault by remember { mutableStateOf(isDefaultAssistant(context)) }
     var powerOpens by remember { mutableStateOf(powerOpensAssistant(context)) }
+    val settings = remember { Settings(context) }
     var message by remember { mutableStateOf<String?>(null) }
     val lifecycle = LocalLifecycleOwner.current
     LaunchedEffect(lifecycle) {
@@ -738,6 +748,8 @@ private fun AssistantCard(shizuku: ShizukuState) {
                     scope.launch {
                         val role = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && shizuku == ShizukuState.Ready) {
                             runCatching {
+                                // Remember who had the role (e.g. Gemini) so it can be restored.
+                                currentAssistant()?.takeIf { it != context.packageName }?.let { settings.previousAssistant = it }
                                 ShizukuShell.run("cmd role add-role-holder --user 0 android.app.role.ASSISTANT ${context.packageName}")
                             }.getOrNull()
                         } else null
@@ -761,12 +773,41 @@ private fun AssistantCard(shizuku: ShizukuState) {
                     Spacer(Modifier.width(16.dp))
                     Switch(checked = powerOpens, onCheckedChange = { enable ->
                         scope.launch {
-                            // AOSP/Pixel: 5 = digital assistant, 1 = power menu.
-                            runCatching { ShizukuShell.run("settings put global $POWER_LONG_PRESS ${if (enable) 5 else 1}") }
+                            // AOSP/Pixel: 5 = digital assistant, 1 = power menu. Turning it off restores what was there before.
+                            if (enable) settings.previousPowerLongPress = powerLongPress(context).takeIf { it != 5 }
+                            val value = if (enable) 5 else settings.previousPowerLongPress ?: 1
+                            runCatching { ShizukuShell.run("settings put global $POWER_LONG_PRESS $value") }
                             powerOpens = powerOpensAssistant(context)
                         }
                     })
                 }
+            }
+            if (isDefault) {
+                // Undo: give the assistant role (and long-press power) back to what was there before.
+                val previous = settings.previousAssistant
+                val previousLabel = previous?.let { appLabel(context, it) }
+                TextButton(onClick = {
+                    scope.launch {
+                        if (shizuku == ShizukuState.Ready && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            runCatching {
+                                if (previous != null) {
+                                    ShizukuShell.run("cmd role add-role-holder --user 0 android.app.role.ASSISTANT $previous")
+                                } else {
+                                    ShizukuShell.run("cmd role remove-role-holder --user 0 android.app.role.ASSISTANT ${context.packageName}")
+                                }
+                                if (powerOpensAssistant(context)) {
+                                    ShizukuShell.run("settings put global $POWER_LONG_PRESS ${settings.previousPowerLongPress ?: 1}")
+                                }
+                            }
+                            isDefault = isDefaultAssistant(context)
+                            powerOpens = powerOpensAssistant(context)
+                            message = if (isDefault) "Couldn't switch back automatically. Pick your assistant here." else null
+                        }
+                        if (isDefault) {
+                            context.startActivity(Intent(android.provider.Settings.ACTION_VOICE_INPUT_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        }
+                    }
+                }) { Text(if (previousLabel != null) "Switch back to $previousLabel" else "Stop being the default assistant") }
             }
             message?.let { Hint(it) }
         }

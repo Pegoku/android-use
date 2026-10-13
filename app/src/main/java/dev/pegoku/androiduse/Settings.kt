@@ -41,6 +41,16 @@ class Settings(context: Context) {
         get() = prefs.getBoolean("report_enabled", true)
         set(value) = prefs.edit().putBoolean("report_enabled", value).apply()
 
+    /** Assistant app that was the default before Android Use took over, to restore it later. */
+    var previousAssistant: String?
+        get() = prefs.getString("previous_assistant", null)
+        set(value) = prefs.edit().putString("previous_assistant", value).apply()
+
+    /** power_button_long_press value before Android Use changed it, to restore it later. */
+    var previousPowerLongPress: Int?
+        get() = prefs.getInt("previous_power_long_press", -1).takeIf { it >= 0 }
+        set(value) = prefs.edit().putInt("previous_power_long_press", value ?: -1).apply()
+
     var reportChat: String
         get() = prefs.getString("report_chat", "Notes") ?: "Notes"
         set(value) = prefs.edit().putString("report_chat", value.trim()).apply()
