@@ -18,6 +18,9 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Tags are needed to name nightlies after the latest release.
+          fetch-depth: 0
 
       - uses: actions/setup-java@v6
         with:
@@ -39,7 +42,9 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             VERSION_NAME="${GITHUB_REF_NAME#v}"
           else
-            VERSION_NAME="0.2.0-nightly.${GITHUB_RUN_NUMBER}+${GITHUB_SHA::7}"
+            # Nightlies carry the latest release's number so they sort above it, e.g. 0.5.1-nightly.15+45b7c4b.
+            LATEST_TAG="$(git describe --tags --match 'v*' --abbrev=0 2>/dev/null || echo v0.0.0)"
+            VERSION_NAME="${LATEST_TAG#v}-nightly.${GITHUB_RUN_NUMBER}+${GITHUB_SHA::7}"
           fi
           echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
           echo "VERSION_CODE=$((100 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
@@ -101,18 +106,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          git tag --force nightly "$GITHUB_SHA"
-          git push --force origin nightly
-          gh release view nightly >/dev/null 2>&1 || gh release create nightly \
-            --title "Nightly" \
-            --notes "Latest build of main. Install the APK, start Shizuku, then grant access and sign in with ChatGPT in the app." \
-            --prerelease
-          gh release edit nightly --target "$GITHUB_SHA" --notes "Latest build of main ($GITHUB_SHA). Install the APK, start Shizuku, then grant access and sign in with ChatGPT in the app."
-          # Keep only the current build's APKs on the rolling release.
-          for asset in $(gh release view nightly --json assets --jq '.assets[].name'); do
-            gh release delete-asset nightly "$asset" --yes
+          # Every push to main gets a brand-new pre-release with its own tag, so the release date is
+          # the build date and Obtainium (with "Include prereleases" on) sees a new version each time.
+          # The previous nightlies are removed, so only the latest one is kept.
+          for old in $(gh release list --limit 100 --json tagName,isPrerelease --jq '.[] | select(.isPrerelease and (.tagName | startswith("nightly"))) | .tagName'); do
+            gh release delete "$old" --yes --cleanup-tag || true
           done
-          gh release upload nightly dist/*.apk --clobber
+          git push --delete origin nightly 2>/dev/null || true
+          gh release create "nightly.${GITHUB_RUN_NUMBER}" "dist/android-use-${VERSION_NAME}.apk" \
+            --target "$GITHUB_SHA" \
+            --title "Nightly ${VERSION_NAME}" \
+            --notes "Latest build of main (${GITHUB_SHA}). Install the APK, start Shizuku, then grant access and sign in with ChatGPT in the app. The debug APK is in this run's workflow artifacts." \
+            --prerelease
 
       - name: GitHub release
         if: startsWith(github.ref, 'refs/tags/v')

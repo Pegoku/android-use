@@ -25,7 +25,8 @@ releases and keeps it updated. Tap the badge on your phone, or add
 `https://github.com/Pegoku/android-use` in Obtainium manually.
 
 - **Stable:** tagged `v*` releases. This is Obtainium's default.
-- **Latest `main`:** the rolling `nightly` pre-release.
+- **Latest `main`:** every push publishes a fresh `nightly.N` pre-release. To follow it, open the
+  app in Obtainium and turn on **Include prereleases**.
 
 Every release is signed with the same key, so updates install over each other. You can also
 download the APK straight from [Releases](https://github.com/Pegoku/android-use/releases) or build
@@ -125,7 +126,8 @@ Shell commands and messages to recipients that your task doesn't name are **sens
 2. Build debug and release APKs.
 3. Upload the APKs as workflow artifacts.
 
-Each push to `main` also updates a rolling **nightly** pre-release with the latest APKs. Pushing a
+Each push to `main` also publishes a new **nightly** pre-release (`nightly.N`, named after the
+latest release, e.g. `0.5.1-nightly.15+45b7c4b`) with the signed APK, replacing the previous one. Pushing a
 `v*` tag (for example `git tag v0.2.0 && git push origin v0.2.0`) publishes a versioned GitHub
 release.
 
