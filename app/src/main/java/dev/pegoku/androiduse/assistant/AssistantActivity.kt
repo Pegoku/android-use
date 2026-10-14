@@ -1,17 +1,11 @@
 package dev.pegoku.androiduse.assistant
 
-import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Bundle
-import android.speech.RecognitionListener
-import android.speech.RecognizerIntent
-import android.speech.SpeechRecognizer
-import android.speech.tts.TextToSpeech
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -24,9 +18,9 @@ import dev.pegoku.androiduse.agent.TaskRunner
 import dev.pegoku.androiduse.device.Device
 import dev.pegoku.androiduse.shell.ShizukuShell
 import dev.pegoku.androiduse.shell.ShizukuState
+import dev.pegoku.androiduse.ui.MainActivity
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
-import java.util.Locale
 
 /**
  * The assistant overlay, opened by the system's assist gesture (long-press home / power) once
@@ -36,10 +30,8 @@ class AssistantActivity : ComponentActivity() {
 
     private var screen by mutableStateOf<SharedScreen?>(null)
     private var revealed by mutableStateOf(false)
-    private var listening by mutableStateOf(false)
-    private var partialSpeech by mutableStateOf("")
-    private var recognizer: SpeechRecognizer? = null
-    private var tts: TextToSpeech? = null
+    private val speech = SpeechInput(this)
+    private val speaker = Speaker(this)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // Transparent bars whose icon color follows the system theme, like the overlay itself.
@@ -79,76 +71,26 @@ class AssistantActivity : ComponentActivity() {
         setContent {
             AssistantOverlay(
                 screen = screen,
-                listening = listening,
-                partialSpeech = partialSpeech,
+                listening = speech.listening,
+                partialSpeech = speech.partial,
                 onSend = { text, share -> ChatEngine.send(this, text, if (share) screen else null) },
-                onMic = ::toggleListening,
+                onMic = { speech.toggle { ChatEngine.send(this, it, null) } },
                 onDismiss = ::finish,
+                onOpenApp = {
+                    startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    finish()
+                },
                 onCopy = { text ->
                     getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Android Use", text))
                 },
-                onSpeak = ::speak,
+                onSpeak = speaker::speak,
             )
         }
     }
 
-    private fun toggleListening() {
-        if (listening) {
-            recognizer?.stopListening()
-            return
-        }
-        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), REQUEST_AUDIO)
-            return
-        }
-        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            partialSpeech = "Speech recognition isn't available on this device"
-            return
-        }
-        val rec = recognizer ?: SpeechRecognizer.createSpeechRecognizer(this).also { recognizer = it }
-        rec.setRecognitionListener(object : RecognitionListener {
-            override fun onReadyForSpeech(params: Bundle?) { listening = true; partialSpeech = "" }
-            override fun onBeginningOfSpeech() {}
-            override fun onRmsChanged(rmsdB: Float) {}
-            override fun onBufferReceived(buffer: ByteArray?) {}
-            override fun onEndOfSpeech() { listening = false }
-            override fun onError(error: Int) { listening = false; partialSpeech = "" }
-            override fun onEvent(eventType: Int, params: Bundle?) {}
-            override fun onPartialResults(partialResults: Bundle?) {
-                partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.let { partialSpeech = it }
-            }
-            override fun onResults(results: Bundle?) {
-                listening = false
-                partialSpeech = ""
-                results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let { ChatEngine.send(this@AssistantActivity, it, null) }
-            }
-        })
-        rec.startListening(
-            Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-                .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true),
-        )
-    }
-
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == REQUEST_AUDIO && grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) toggleListening()
-    }
-
-    private fun speak(text: String) {
-        val engine = tts
-        if (engine != null) {
-            engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "reply")
-            return
-        }
-        tts = TextToSpeech(this) { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                tts?.language = Locale.getDefault()
-                tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "reply")
-            }
-        }
+        speech.onPermissionResult(requestCode, grantResults)
     }
 
     // The overlay covers the screen the agent works on, so a running task waits while it's in front.
@@ -163,14 +105,13 @@ class AssistantActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        recognizer?.destroy()
-        tts?.shutdown()
+        speech.destroy()
+        speaker.shutdown()
         super.onDestroy()
     }
 
     companion object {
         const val EXTRA_RESUMED = "resumed"
-        private const val REQUEST_AUDIO = 7
         private const val CAPTURE_TIMEOUT_MS = 1_500L
 
         fun intent(context: Context): Intent =
