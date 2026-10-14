@@ -44,6 +44,15 @@ it yourself with `./gradlew installDebug`.
 4. Optional: in **Settings**, pick the models and reasoning effort, the step limit, and the WhatsApp
    report chat.
 
+## The app
+
+Android Use opens as a chat, like the Gemini and ChatGPT apps. Ask a question or say what to do
+on the phone from the same input; the assistant answers directly or hands the task to the agent,
+and the task's progress and outcome show inline in the conversation. The drawer (menu icon) lists
+your recent chats and starts new ones; the avatar opens Settings, which also holds the setup
+steps, Codex usage and the assistant options. While a task runs, the list icon in the top bar
+shows the agent's step log and the phone's last screen.
+
 ## Default assistant
 
 Android Use can replace Gemini or Google Assistant as your **default digital assistant**. In the
@@ -62,10 +71,11 @@ assistant over whatever app you're in:
   tap the task row for the agent's own account. The reply box is ready for follow-ups ("that's the
   wrong contact", "now do the same for Anna") and one-tap chips offer **Try again**, **What went
   wrong?** or **New chat**. If the overlay isn't open, a notification says what happened, with
-  **Reply** (type a follow-up right there) and **New chat** actions. Tasks typed in the app or
-  shared from another app join the same conversation.
-- **Recent chats:** the last conversations are listed when you open a new chat; tap one to pick it
-  up where it left off (screenshots aren't kept). Delete any with the bin icon.
+  **Reply** (type a follow-up right there) and **New chat** actions. Chats in the app and in the
+  overlay are the same conversation, and text shared from another app lands in it too.
+- **Recent chats:** the last conversations are listed in the app's drawer and when you open a new
+  chat in the overlay; tap one to pick it up where it left off (screenshots aren't kept). Delete
+  any with the bin icon.
 - **Other controls:** a mic for voice input, read-aloud, copy, new chat and minimize.
 
 Chat replies use the fast model (about 1 s until the reply starts streaming). Phone tasks use the

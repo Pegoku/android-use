@@ -89,7 +89,11 @@ object ChatEngine {
     private val client = CodexClient()
 
     /** Which saved chat this conversation is (0 until it has been saved for the first time). */
-    private var chatId = 0L
+    private val _chatId = MutableStateFlow(0L)
+    val currentChat: StateFlow<Long> = _chatId.asStateFlow()
+    private var chatId: Long
+        get() = _chatId.value
+        set(value) { _chatId.value = value }
 
     fun newChat() {
         if (TaskRunner.state.value.running) return

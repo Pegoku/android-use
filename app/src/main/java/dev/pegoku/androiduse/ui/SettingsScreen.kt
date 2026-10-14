@@ -58,6 +58,9 @@ import dev.pegoku.androiduse.agent.Guard
 import dev.pegoku.androiduse.llm.CodexClient
 import dev.pegoku.androiduse.memory.Memory
 import dev.pegoku.androiduse.memory.MemoryStore
+import dev.pegoku.androiduse.auth.CodexAuth
+import dev.pegoku.androiduse.shell.ShizukuShell
+import dev.pegoku.androiduse.shell.ShizukuState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
@@ -67,6 +70,8 @@ import kotlin.math.roundToInt
 @Composable
 fun SettingsScreen(settings: Settings, onBack: () -> Unit) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+    val shizuku by ShizukuShell.state.collectAsStateWithLifecycle()
+    val tokens by CodexAuth.tokens.collectAsStateWithLifecycle()
     Scaffold(
         topBar = {
             TopAppBar(
@@ -81,6 +86,14 @@ fun SettingsScreen(settings: Settings, onBack: () -> Unit) {
             contentPadding = padding,
             modifier = Modifier.fillMaxSize(),
         ) {
+            item {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (shizuku != ShizukuState.Ready || tokens == null) SetupCard(shizuku, tokens)
+                    tokens?.let { AccountCard(it) }
+                    if (shizuku == ShizukuState.Ready) ShizukuChip()
+                    AssistantCard(shizuku)
+                }
+            }
             item { ModelsSection(settings) }
             item { AgentSection(settings) }
             item { SafetySection(settings) }
