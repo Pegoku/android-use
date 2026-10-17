@@ -72,6 +72,14 @@ class Agent(
                 TaskRunner.awaitResumed()
                 log(LogKind.Info, "Resumed")
             }
+            TaskRunner.takeSteering().forEach { text ->
+                this.task += "\n\nLater instruction from the owner: $text"
+                guard.addInstruction(text)
+                history += Raw(userMessage(
+                    "The owner sent this while you work. It comes from the owner, so follow it; where it conflicts with the original task, it wins:\n$text",
+                ))
+                escalate("following your new instructions")
+            }
             val t0 = System.currentTimeMillis()
             history += observe(step)
             val t1 = System.currentTimeMillis()

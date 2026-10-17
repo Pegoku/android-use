@@ -89,6 +89,9 @@
         <receiver
             android:name=".agent.ResultNotification$Receiver"
             android:exported="false" />
+        <receiver
+            android:name=".agent.LiveNotification$Receiver"
+            android:exported="false" />
 
         <provider
             android:name="rikka.shizuku.ShizukuProvider"

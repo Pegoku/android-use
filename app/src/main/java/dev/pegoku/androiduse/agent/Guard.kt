@@ -22,13 +22,18 @@ data class GuardDecision(val allowed: Boolean, val message: String)
  */
 class Guard(
     private val context: Context,
-    private val task: String,
+    private var task: String,
     private val mode: String,
     private val reviewerModel: String,
     private val fallbackModel: String,
     private val log: (LogKind, String) -> Unit,
 ) {
     private val client = CodexClient()
+
+    /** Something the owner added while the task runs; it counts as part of the trusted task. */
+    fun addInstruction(text: String) {
+        task += "\n\nLater instruction from the owner: $text"
+    }
 
     suspend fun check(action: String, reason: String, recentSteps: List<String>, screen: String): GuardDecision {
         if (mode == MODE_AUTO) {

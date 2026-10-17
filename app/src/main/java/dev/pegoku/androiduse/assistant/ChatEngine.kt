@@ -190,12 +190,31 @@ object ChatEngine {
         return startTask(app, callId, task.trim(), fromHome)
     }
 
+    /** What the owner said to the running task, folded into its outcome for the chat model. */
+    private val steers = mutableListOf<String>()
+
+    /**
+     * Passes [text] to the running task as a new instruction and shows it in the chat. Returns
+     * false if no task is running.
+     */
+    fun steer(text: String): Boolean {
+        if (!TaskRunner.steer(text)) return false
+        synchronized(steers) { steers += text.trim() }
+        add(ChatMessage(ids.incrementAndGet(), ChatRole.User, text.trim()))
+        persist()
+        // The task waits while the overlay covers the screen; step aside so it can act on this.
+        _minimize.tryEmit(Unit)
+        return true
+    }
+
     fun stop() {
         job?.cancel()
         TaskRunner.stop()
     }
 
     fun send(context: Context, text: String, screen: SharedScreen?) {
+        // While a task runs, anything typed or said steers it.
+        if (TaskRunner.state.value.running && steer(text)) return
         if (_busy.value || text.isBlank()) return
         val app = context.applicationContext
         ResultNotification.dismiss(app)
@@ -307,13 +326,17 @@ object ChatEngine {
     private fun startTask(context: Context, callId: String, task: String, fromHome: Boolean): Boolean {
         val statusId = ids.incrementAndGet()
         add(ChatMessage(statusId, ChatRole.Task, task))
+        synchronized(steers) { steers.clear() }
         val started = TaskRunner.start(context, task, fromHome = fromHome) { result ->
             questionWatcher?.cancel()
             upsert(ChatMessage(statusId, ChatRole.Task, task, success = result.success, detail = result.summary))
             history += buildJsonObject {
                 put("type", "function_call_output")
                 put("call_id", callId)
-                put("output", (if (result.success) "Done. " else "Failed. ") + result.summary)
+                // The steering messages sit in the chat after this call, but the model only sees this output.
+                val steered = synchronized(steers) { steers.toList().also { steers.clear() } }
+                put("output", (if (result.success) "Done. " else "Failed. ") + result.summary +
+                    steered.takeIf { it.isNotEmpty() }?.joinToString("\n", "\nWhile it ran, the owner told the agent:\n") { "- $it" }.orEmpty())
             }
             persist()
             reopen(context)

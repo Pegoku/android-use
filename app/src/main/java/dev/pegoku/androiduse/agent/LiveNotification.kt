@@ -2,6 +2,8 @@ package dev.pegoku.androiduse.agent
 
 import android.app.Notification
 import android.app.PendingIntent
+import android.app.RemoteInput
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -11,6 +13,7 @@ import dev.pegoku.androiduse.R
 import dev.pegoku.androiduse.llm.CodexUsage
 import dev.pegoku.androiduse.ui.MainActivity
 import dev.pegoku.androiduse.assistant.AssistantActivity
+import dev.pegoku.androiduse.assistant.ChatEngine
 
 /**
  * The ongoing notification for a running task. On Android 16+ it asks to be promoted to a
@@ -18,6 +21,8 @@ import dev.pegoku.androiduse.assistant.AssistantActivity
  */
 object LiveNotification {
     private const val EXTRA_REQUEST_PROMOTED_ONGOING = "android.requestPromotedOngoing"
+    private const val ACTION_STEER = "dev.pegoku.androiduse.STEER"
+    private const val KEY_STEER = "steer"
 
     fun build(
         context: Context,
@@ -65,6 +70,7 @@ object LiveNotification {
                     PendingIntent.getActivity(context, 0, Intent(context, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
                 },
             )
+            .addAction(steerAction(context, question))
             .addAction(Notification.Action.Builder(null, "Stop", stopIntent).build())
         state.screen?.let { builder.setLargeIcon(Icon.createWithBitmap(thumbnail(it))) }
 
@@ -82,6 +88,34 @@ object LiveNotification {
             builder.setStyle(Notification.BigTextStyle().bigText(listOf(status, details).filter { it.isNotBlank() }.joinToString("\n")))
         }
         return builder.build()
+    }
+
+    /**
+     * Type into the notification to steer the task (or answer its pending question) without
+     * opening anything; the agent picks it up before its next step.
+     */
+    private fun steerAction(context: Context, question: QuestionRequest?): Notification.Action =
+        Notification.Action.Builder(
+            null, if (question != null) "Answer" else "Steer",
+            PendingIntent.getBroadcast(
+                context, 3,
+                Intent(context, Receiver::class.java).setAction(ACTION_STEER),
+                // Mutable so the system can attach the typed text.
+                PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            ),
+        ).addRemoteInput(
+            RemoteInput.Builder(KEY_STEER).setLabel(if (question != null) "Your answer" else "Tell the agent what to do differently").build(),
+        ).build()
+
+    class Receiver : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action != ACTION_STEER) return
+            val text = RemoteInput.getResultsFromIntent(intent)?.getCharSequence(KEY_STEER)?.toString()?.trim().orEmpty()
+            if (text.isEmpty()) return
+            // Either way the task state changes, so the live notification is reposted and the reply spinner clears.
+            val question = Questions.current.value
+            if (question != null) Questions.answer(question.id, text) else ChatEngine.steer(text)
+        }
     }
 
     /** Turns an action log line ("tap element=7 …") into something a person would say. */

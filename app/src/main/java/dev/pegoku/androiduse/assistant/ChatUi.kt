@@ -109,8 +109,10 @@ internal fun LazyListScope.chatItems(
     }
     item {
         val last = messages.lastOrNull()
+        val run by TaskRunner.state.collectAsStateWithLifecycle()
         when {
-            busy && last?.role == ChatRole.User -> ThinkingDots()
+            // A message sent while a task runs steers it; the task row already shows the progress.
+            busy && last?.role == ChatRole.User && !run.running -> ThinkingDots()
             !busy && last?.role == ChatRole.Assistant -> Row(verticalAlignment = Alignment.CenterVertically) {
                 val muted = MaterialTheme.colorScheme.onSurfaceVariant
                 IconButton(onClick = { onCopy(last.text) }) { Icon(Icons.Outlined.ContentCopy, "Copy", tint = muted, modifier = Modifier.size(20.dp)) }
@@ -348,8 +350,12 @@ internal fun InputBar(
     placeholder: String = "Ask Android Use",
 ) {
     val colors = MaterialTheme.colorScheme
+    // While a task runs, the composer steers it instead of waiting for it to end.
+    val run by TaskRunner.state.collectAsStateWithLifecycle()
+    val steering = run.running && !answering
+    val blocked = busy && !steering
     fun submit() {
-        if (text.isNotBlank() && !busy) {
+        if (text.isNotBlank() && !blocked) {
             onSend(text)
             onTextChange("")
         }
@@ -385,8 +391,9 @@ internal fun InputBar(
                     Text(
                         when {
                             listening -> "Listening…"
-                            busy -> "Working…"
+                            blocked -> "Working…"
                             answering -> "Type your answer"
+                            steering -> "Tell the agent what to change"
                             screen != null -> "Ask about this screen"
                             afterTask -> "Follow up or give feedback"
                             else -> placeholder
@@ -414,10 +421,10 @@ internal fun InputBar(
                 },
             )
             if (text.isNotBlank() && !listening) {
-                Surface(onClick = ::submit, enabled = !busy, shape = CircleShape, color = if (busy) colors.surfaceContainerHighest else colors.primary) {
+                Surface(onClick = ::submit, enabled = !blocked, shape = CircleShape, color = if (blocked) colors.surfaceContainerHighest else colors.primary) {
                     Icon(
                         Icons.AutoMirrored.Filled.Send, "Send",
-                        tint = if (busy) colors.onSurfaceVariant else colors.onPrimary,
+                        tint = if (blocked) colors.onSurfaceVariant else colors.onPrimary,
                         modifier = Modifier.padding(10.dp).size(20.dp),
                     )
                 }

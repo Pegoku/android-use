@@ -40,6 +40,9 @@ object TaskRunner {
 
     @Volatile private var onFinished: (suspend (AgentResult) -> Unit)? = null
 
+    /** What the owner typed while the task runs, waiting for the agent's next step. */
+    private val steering = java.util.concurrent.ConcurrentLinkedQueue<String>()
+
     /**
      * Starts [task] in the foreground service. [fromHome] presses Home first (tasks typed in the app);
      * the assistant passes false so the agent can act on whatever the user was looking at.
@@ -48,6 +51,7 @@ object TaskRunner {
     fun start(context: Context, task: String, fromHome: Boolean = true, onFinished: (suspend (AgentResult) -> Unit)? = null): Boolean {
         if (_state.value.running) return false
         this.onFinished = onFinished
+        steering.clear()
         _state.value = RunState(running = true, task = task, phase = "Starting", fromAssistant = !fromHome)
         context.startForegroundService(
             Intent(context, AgentService::class.java)
@@ -61,6 +65,20 @@ object TaskRunner {
         _paused.value = false
         job?.cancel()
     }
+
+    /**
+     * Steers the running task: [text] reaches the agent before its next step, on top of the
+     * original task. Returns false if nothing is running.
+     */
+    fun steer(text: String): Boolean {
+        if (!_state.value.running || text.isBlank()) return false
+        steering += text.trim()
+        log(LogKind.Info, "You said: ${text.trim()}")
+        return true
+    }
+
+    /** Hands the agent everything the owner said since its last step. */
+    internal fun takeSteering(): List<String> = generateSequence { steering.poll() }.toList()
 
     /**
      * Paused while the assistant overlay is in front: it covers the screen the agent works on.
