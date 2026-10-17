@@ -1,6 +1,8 @@
 package dev.pegoku.androiduse.assistant
 
 import android.text.format.DateUtils
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -37,6 +39,10 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.AddAPhoto
+import androidx.compose.material.icons.outlined.AttachFile
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ContentCopy
@@ -163,7 +169,15 @@ internal fun UserMessage(message: ChatMessage) {
                 modifier = Modifier.padding(bottom = 6.dp).size(width = 54.dp, height = 96.dp).clip(RoundedCornerShape(10.dp)),
             )
         }
-        Text(
+        if (message.attachments.isNotEmpty()) {
+            Row(
+                Modifier.padding(bottom = 6.dp).horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                message.attachments.forEach { AttachmentChip(it, height = 96.dp) }
+            }
+        }
+        if (message.text.isNotBlank()) Text(
             message.text,
             style = MaterialTheme.typography.bodyLarge,
             color = colors.onPrimaryContainer,
@@ -331,7 +345,7 @@ internal fun RecentChatRow(chat: SavedChat, selected: Boolean = false, onOpen: (
     }
 }
 
-/** The pill-shaped composer: attach screen, text, mic or send. */
+/** The pill-shaped composer: attach files or the screen, text, mic or send. */
 @Composable
 internal fun InputBar(
     text: String,
@@ -348,14 +362,20 @@ internal fun InputBar(
     onMic: () -> Unit,
     modifier: Modifier = Modifier,
     placeholder: String = "Ask Android Use",
+    /** Files picked for the next message; the caller takes them in [onSend]. Null hides the attach button. */
+    attachments: PendingAttachments? = null,
 ) {
     val colors = MaterialTheme.colorScheme
     // While a task runs, the composer steers it instead of waiting for it to end.
     val run by TaskRunner.state.collectAsStateWithLifecycle()
     val steering = run.running && !answering
     val blocked = busy && !steering
+    // Attachments go with a new message, not with steering or an answer to the task.
+    val canAttach = attachments != null && !steering && !answering
+    val attached = canAttach && attachments!!.items.isNotEmpty()
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> attachments?.add(uris) }
     fun submit() {
-        if (text.isNotBlank() && !blocked) {
+        if ((text.isNotBlank() || attached) && !blocked && attachments?.loading.let { it == null || it == 0 }) {
             onSend(text)
             onTextChange("")
         }
@@ -365,81 +385,148 @@ internal fun InputBar(
         color = colors.surfaceContainerHigh,
         modifier = modifier.fillMaxWidth(),
     ) {
-        Row(Modifier.padding(horizontal = 6.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (screen != null) {
-                // Attached screen: thumbnail with a tap-to-remove affordance.
-                Box(Modifier.padding(start = 8.dp).clickable(onClick = onToggleScreen)) {
-                    Image(
-                        screen.thumbnail.asImageBitmap(), "Attached screen",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.size(width = 28.dp, height = 48.dp).clip(RoundedCornerShape(6.dp)),
-                    )
-                    Icon(
-                        Icons.Default.Close, "Remove screen", tint = Color.White,
-                        modifier = Modifier.align(Alignment.TopEnd).size(14.dp).background(Color.Black.copy(alpha = 0.6f), CircleShape),
-                    )
+        Column {
+            if (canAttach && (attached || attachments!!.loading > 0)) {
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 14.dp, end = 14.dp, top = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    attachments!!.items.forEach { attachment ->
+                        Box(Modifier.clickable { attachments.remove(attachment) }) {
+                            AttachmentChip(attachment, height = 56.dp)
+                            Icon(
+                                Icons.Default.Close, "Remove ${attachment.name}", tint = Color.White,
+                                modifier = Modifier.align(Alignment.TopEnd).padding(3.dp).size(16.dp).background(Color.Black.copy(alpha = 0.6f), CircleShape),
+                            )
+                        }
+                    }
+                    if (attachments.loading > 0) CircularProgressIndicator(Modifier.padding(8.dp).size(22.dp), strokeWidth = 2.5.dp)
                 }
-            } else if (canShare) {
-                IconButton(onClick = onToggleScreen) { Icon(Icons.Outlined.AddAPhoto, "Attach screen", tint = colors.onSurface) }
-            } else {
-                Spacer(Modifier.width(12.dp))
             }
-            TextField(
-                value = if (listening && partialSpeech.isNotEmpty()) partialSpeech else text,
-                onValueChange = onTextChange,
-                placeholder = {
-                    Text(
-                        when {
-                            listening -> "Listening…"
-                            blocked -> "Working…"
-                            answering -> "Type your answer"
-                            steering -> "Tell the agent what to change"
-                            screen != null -> "Ask about this screen"
-                            afterTask -> "Follow up or give feedback"
-                            else -> placeholder
-                        },
-                        fontSize = 17.sp, color = colors.onSurfaceVariant,
-                    )
-                },
-                textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp, color = colors.onSurface),
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Color.Transparent,
-                    unfocusedContainerColor = Color.Transparent,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    cursorColor = colors.primary,
-                ),
-                maxLines = 5,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                keyboardActions = KeyboardActions(onSend = { submit() }),
-                modifier = Modifier.weight(1f).onPreviewKeyEvent { event ->
-                    // Enter sends (as in chat apps); Shift+Enter still inserts a line break.
-                    if (event.key == Key.Enter && !event.isShiftPressed) {
-                        if (event.type == KeyEventType.KeyDown) submit()
-                        true
-                    } else false
-                },
-            )
-            if (text.isNotBlank() && !listening) {
-                Surface(onClick = ::submit, enabled = !blocked, shape = CircleShape, color = if (blocked) colors.surfaceContainerHighest else colors.primary) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.Send, "Send",
-                        tint = if (blocked) colors.onSurfaceVariant else colors.onPrimary,
-                        modifier = Modifier.padding(10.dp).size(20.dp),
-                    )
+            Row(Modifier.padding(horizontal = 6.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (canAttach) {
+                    IconButton(onClick = { picker.launch(arrayOf("*/*")) }) { Icon(Icons.Outlined.AttachFile, "Attach files", tint = colors.onSurface) }
                 }
-                Spacer(Modifier.width(2.dp))
-            } else {
-                Surface(onClick = onMic, shape = CircleShape, color = if (listening) colors.errorContainer else Color.Transparent) {
-                    Icon(
-                        Icons.Default.Mic, "Speak",
-                        tint = if (listening) colors.onErrorContainer else colors.onSurface,
-                        modifier = Modifier.padding(10.dp).size(22.dp),
-                    )
+                if (screen != null) {
+                    // Attached screen: thumbnail with a tap-to-remove affordance.
+                    Box(Modifier.padding(start = 8.dp).clickable(onClick = onToggleScreen)) {
+                        Image(
+                            screen.thumbnail.asImageBitmap(), "Attached screen",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.size(width = 28.dp, height = 48.dp).clip(RoundedCornerShape(6.dp)),
+                        )
+                        Icon(
+                            Icons.Default.Close, "Remove screen", tint = Color.White,
+                            modifier = Modifier.align(Alignment.TopEnd).size(14.dp).background(Color.Black.copy(alpha = 0.6f), CircleShape),
+                        )
+                    }
+                } else if (canShare) {
+                    IconButton(onClick = onToggleScreen) { Icon(Icons.Outlined.AddAPhoto, "Attach screen", tint = colors.onSurface) }
+                } else if (!canAttach) {
+                    Spacer(Modifier.width(12.dp))
                 }
-                Spacer(Modifier.width(2.dp))
+                TextField(
+                    value = if (listening && partialSpeech.isNotEmpty()) partialSpeech else text,
+                    onValueChange = onTextChange,
+                    placeholder = {
+                        Text(
+                            when {
+                                listening -> "Listening…"
+                                blocked -> "Working…"
+                                answering -> "Type your answer"
+                                steering -> "Tell the agent what to change"
+                                screen != null -> "Ask about this screen"
+                                attached -> "Ask about ${if (attachments!!.items.size == 1) "this file" else "these files"}"
+                                afterTask -> "Follow up or give feedback"
+                                else -> placeholder
+                            },
+                            fontSize = 17.sp, color = colors.onSurfaceVariant,
+                        )
+                    },
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp, color = colors.onSurface),
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        cursorColor = colors.primary,
+                    ),
+                    maxLines = 5,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardActions = KeyboardActions(onSend = { submit() }),
+                    modifier = Modifier.weight(1f).onPreviewKeyEvent { event ->
+                        // Enter sends (as in chat apps); Shift+Enter still inserts a line break.
+                        if (event.key == Key.Enter && !event.isShiftPressed) {
+                            if (event.type == KeyEventType.KeyDown) submit()
+                            true
+                        } else false
+                    },
+                )
+                if ((text.isNotBlank() || attached) && !listening) {
+                    Surface(onClick = ::submit, enabled = !blocked, shape = CircleShape, color = if (blocked) colors.surfaceContainerHighest else colors.primary) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.Send, "Send",
+                            tint = if (blocked) colors.onSurfaceVariant else colors.onPrimary,
+                            modifier = Modifier.padding(10.dp).size(20.dp),
+                        )
+                    }
+                    Spacer(Modifier.width(2.dp))
+                } else {
+                    Surface(onClick = onMic, shape = CircleShape, color = if (listening) colors.errorContainer else Color.Transparent) {
+                        Icon(
+                            Icons.Default.Mic, "Speak",
+                            tint = if (listening) colors.onErrorContainer else colors.onSurface,
+                            modifier = Modifier.padding(10.dp).size(22.dp),
+                        )
+                    }
+                    Spacer(Modifier.width(2.dp))
+                }
             }
         }
+    }
+}
+
+/** An attachment as a picture thumbnail, or a file card with its icon and name. */
+@Composable
+internal fun AttachmentChip(attachment: Attachment, height: androidx.compose.ui.unit.Dp) {
+    val colors = MaterialTheme.colorScheme
+    val thumbnail = attachment.thumbnail
+    if (thumbnail != null && attachment.isImage) {
+        Image(
+            thumbnail.asImageBitmap(), attachment.name,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.size(height).clip(RoundedCornerShape(12.dp)),
+        )
+        return
+    }
+    Row(
+        Modifier
+            .height(height.coerceAtMost(56.dp))
+            .widthIn(max = 200.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(colors.surfaceContainerHighest)
+            .padding(start = 6.dp, end = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (thumbnail != null) {
+            Image(
+                thumbnail.asImageBitmap(), null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(width = 32.dp, height = 44.dp).clip(RoundedCornerShape(6.dp)),
+            )
+        } else {
+            Icon(
+                when {
+                    attachment.isImage -> Icons.Outlined.Image
+                    attachment.mime == "application/pdf" -> Icons.Outlined.PictureAsPdf
+                    else -> Icons.Outlined.Description
+                },
+                null, tint = colors.primary, modifier = Modifier.padding(start = 4.dp).size(24.dp),
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        Text(attachment.name, style = MaterialTheme.typography.bodySmall, color = colors.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }
 

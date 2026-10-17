@@ -73,7 +73,7 @@ class AssistantActivity : ComponentActivity() {
                 screen = screen,
                 listening = speech.listening,
                 partialSpeech = speech.partial,
-                onSend = { text, share -> ChatEngine.send(this, text, if (share) screen else null) },
+                onSend = { text, share, files -> ChatEngine.send(this, text, if (share) screen else null, files) },
                 onMic = { speech.toggle { ChatEngine.send(this, it, null) } },
                 onDismiss = ::finish,
                 onOpenApp = {

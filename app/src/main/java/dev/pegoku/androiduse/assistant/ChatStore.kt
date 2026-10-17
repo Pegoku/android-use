@@ -11,7 +11,18 @@ import java.io.File
 
 /** A chat message without its bitmap, as kept on disk. */
 @Serializable
-data class SavedMessage(val id: Long, val role: ChatRole, val text: String, val success: Boolean? = null, val detail: String? = null)
+data class SavedMessage(
+    val id: Long,
+    val role: ChatRole,
+    val text: String,
+    val success: Boolean? = null,
+    val detail: String? = null,
+    val files: List<SavedFile> = emptyList(),
+)
+
+/** An attachment's name and type, so the chat still shows what was attached. Its content isn't kept. */
+@Serializable
+data class SavedFile(val name: String, val mime: String)
 
 /** A whole conversation: what the user saw plus the model transcript needed to continue it. */
 @Serializable
@@ -25,7 +36,7 @@ data class SavedChat(
 
 /**
  * Recent assistant conversations, kept in a private file so a chat can be picked up later, like
- * the chat list in Gemini or ChatGPT. Only the newest few are kept; screenshots are not saved.
+ * the chat list in Gemini or ChatGPT. Only the newest few are kept; screenshots and attached files are not saved.
  */
 object ChatStore {
     private const val MAX_CHATS = 20

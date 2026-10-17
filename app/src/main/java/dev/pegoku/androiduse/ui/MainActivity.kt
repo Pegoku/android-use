@@ -5,6 +5,8 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
+import androidx.core.content.IntentCompat
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -101,6 +103,7 @@ import kotlinx.coroutines.launch
 /** The app: a chat with the assistant, a drawer of recent chats, and settings. */
 class MainActivity : ComponentActivity() {
     private val sharedTask = mutableStateOf<String?>(null)
+    private val sharedFiles = mutableStateOf<List<Uri>>(emptyList())
     private val speech = SpeechInput(this)
     private val speaker = Speaker(this)
 
@@ -116,6 +119,7 @@ class MainActivity : ComponentActivity() {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     Root(
                         sharedTask = sharedTask,
+                        sharedFiles = sharedFiles,
                         listening = speech.listening,
                         partialSpeech = speech.partial,
                         onMic = { speech.toggle { ChatEngine.send(this, it, null) } },
@@ -148,14 +152,23 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 
+    /** Text shared from another app becomes the draft; shared pictures and files are attached to it. */
     private fun handleShare(intent: Intent?) {
-        if (intent?.action == Intent.ACTION_SEND) intent.getStringExtra(Intent.EXTRA_TEXT)?.let { sharedTask.value = it }
+        when (intent?.action) {
+            Intent.ACTION_SEND -> {
+                intent.getStringExtra(Intent.EXTRA_TEXT)?.let { sharedTask.value = it }
+                IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)?.let { sharedFiles.value = listOf(it) }
+            }
+            Intent.ACTION_SEND_MULTIPLE ->
+                IntentCompat.getParcelableArrayListExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)?.let { sharedFiles.value = it }
+        }
     }
 }
 
 @Composable
 private fun Root(
     sharedTask: MutableState<String?>,
+    sharedFiles: MutableState<List<Uri>>,
     listening: Boolean,
     partialSpeech: String,
     onMic: () -> Unit,
@@ -166,7 +179,7 @@ private fun Root(
     val settings = remember { Settings(context) }
     var showSettings by remember { mutableStateOf(false) }
     // A shared task always lands in the chat.
-    LaunchedEffect(sharedTask.value) { if (sharedTask.value != null) showSettings = false }
+    LaunchedEffect(sharedTask.value, sharedFiles.value) { if (sharedTask.value != null || sharedFiles.value.isNotEmpty()) showSettings = false }
     BackHandler(enabled = showSettings) { showSettings = false }
     AnimatedContent(
         targetState = showSettings,
@@ -182,7 +195,7 @@ private fun Root(
         if (inSettings) {
             SettingsScreen(settings, onBack = { showSettings = false })
         } else {
-            ChatScreen(sharedTask, listening, partialSpeech, onMic, onCopy, onSpeak, onOpenSettings = { showSettings = true })
+            ChatScreen(sharedTask, sharedFiles, listening, partialSpeech, onMic, onCopy, onSpeak, onOpenSettings = { showSettings = true })
         }
     }
 }
@@ -191,6 +204,7 @@ private fun Root(
 @Composable
 private fun ChatScreen(
     sharedTask: MutableState<String?>,
+    sharedFiles: MutableState<List<Uri>>,
     listening: Boolean,
     partialSpeech: String,
     onMic: () -> Unit,
@@ -213,6 +227,7 @@ private fun ChatScreen(
     val settings = remember { Settings(context) }
 
     var text by remember { mutableStateOf("") }
+    val attachments = dev.pegoku.androiduse.assistant.rememberPendingAttachments()
     var showSteps by remember { mutableStateOf(false) }
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val listState = rememberLazyListState()
@@ -223,6 +238,12 @@ private fun ChatScreen(
             sharedTask.value = null
         }
     }
+    LaunchedEffect(sharedFiles.value) {
+        if (sharedFiles.value.isNotEmpty()) {
+            attachments.add(sharedFiles.value)
+            sharedFiles.value = emptyList()
+        }
+    }
     LaunchedEffect(messages.size, messages.lastOrNull()?.text?.length) {
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size)
     }
@@ -230,7 +251,8 @@ private fun ChatScreen(
 
     fun send(message: String) {
         val q = question
-        if (q != null) Questions.answer(q.id, message) else ChatEngine.send(context, message, null)
+        // Steering a running task takes text only; anything attached waits for the next message.
+        if (q != null) Questions.answer(q.id, message) else ChatEngine.send(context, message, null, if (run.running) emptyList() else attachments.take())
     }
 
     ModalNavigationDrawer(
@@ -311,6 +333,7 @@ private fun ChatScreen(
                         onSend = ::send,
                         onMic = onMic,
                         placeholder = if (ready) "Ask anything, or say what to do" else "Finish setup first",
+                        attachments = attachments,
                     )
                 }
             }

@@ -59,6 +59,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.pegoku.androiduse.agent.Questions
+import dev.pegoku.androiduse.agent.TaskRunner
 import dev.pegoku.androiduse.ui.AndroidUseTheme
 
 /**
@@ -70,7 +71,7 @@ fun AssistantOverlay(
     screen: SharedScreen?,
     listening: Boolean,
     partialSpeech: String,
-    onSend: (String, Boolean) -> Unit,
+    onSend: (String, Boolean, List<Attachment>) -> Unit,
     onMic: () -> Unit,
     onDismiss: () -> Unit,
     onOpenApp: () -> Unit,
@@ -82,6 +83,7 @@ fun AssistantOverlay(
     val question by Questions.current.collectAsStateWithLifecycle()
     var shareScreen by remember { mutableStateOf(false) }
     var text by remember { mutableStateOf("") }
+    val attachments = rememberPendingAttachments()
     var shown by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { shown = true }
 
@@ -107,14 +109,14 @@ fun AssistantOverlay(
                         Header(onDismiss, onOpenApp)
                         // Takes only the space left above the input bar, scrolling when the chat is longer.
                         ChatCard(messages, busy, onCopy, onSpeak, Modifier.weight(1f, fill = false))
-                        if (!busy && question == null) FollowUps(messages) { onSend(it, false) }
+                        if (!busy && question == null) FollowUps(messages) { onSend(it, false, emptyList()) }
                     } else {
                         Welcome(
                             screen = screen,
                             sharing = shareScreen,
                             onToggleScreen = { shareScreen = !shareScreen },
                             onSuggestion = { suggestion, withScreen ->
-                                onSend(suggestion, withScreen && screen != null)
+                                onSend(suggestion, withScreen && screen != null, attachments.take())
                                 shareScreen = false
                             },
                         )
@@ -137,11 +139,13 @@ fun AssistantOverlay(
                             if (q != null) {
                                 ChatEngine.answerQuestion(q.id, sent)
                             } else {
-                                onSend(sent, shareScreen)
+                                // Steering a running task takes text only; anything attached waits for the next message.
+                                onSend(sent, shareScreen, if (TaskRunner.state.value.running) emptyList() else attachments.take())
                                 shareScreen = false
                             }
                         },
                         onMic = onMic,
+                        attachments = attachments,
                         modifier = Modifier.swallowTaps(),
                     )
                 }

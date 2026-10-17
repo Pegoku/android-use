@@ -54,6 +54,14 @@ your recent chats and starts new ones; the avatar opens Settings, which also hol
 steps, Codex usage and the assistant options. While a task runs, the list icon in the top bar
 shows the agent's step log and the phone's last screen.
 
+Attach pictures and files with the paperclip, or share them to Android Use from another app.
+Pictures and PDF pages go to the model as images and text files as text. Other files are passed by
+name and type only.
+
+To steer a running task, type into the chat, or tap the live update and use **Steer** to reply
+from the notification. The agent reads your message before its next step and follows it over the
+original task. When the task is waiting on a question, the same box answers it.
+
 ## Default assistant
 
 Android Use can replace Gemini or Google Assistant as your **default digital assistant**. In the
