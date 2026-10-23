@@ -4,6 +4,7 @@ import android.text.format.DateUtils
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -35,6 +36,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.outlined.VolumeUp
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Stop
@@ -67,11 +69,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -121,8 +125,10 @@ internal fun LazyListScope.chatItems(
         val last = messages.lastOrNull()
         val run by TaskRunner.state.collectAsStateWithLifecycle()
         when {
-            // A message sent while a task runs steers it; the task row already shows the progress.
-            busy && last?.role == ChatRole.User && !run.running -> ThinkingDots()
+            // While a task runs its row shows the progress (and messages sent then steer it). Otherwise
+            // the model is working until its reply starts to show: before the first words, during a
+            // web search, or when it picks up after a task.
+            busy && !run.running && !(last?.role == ChatRole.Assistant && last.streaming && last.text.isNotEmpty()) -> Thinking()
             !busy && last?.role == ChatRole.Assistant -> Row(verticalAlignment = Alignment.CenterVertically) {
                 val muted = MaterialTheme.colorScheme.onSurfaceVariant
                 IconButton(onClick = { onCopy(last.text) }) { Icon(Icons.Outlined.ContentCopy, "Copy", tint = muted, modifier = Modifier.size(20.dp)) }
@@ -134,33 +140,68 @@ internal fun LazyListScope.chatItems(
 
 @Composable
 internal fun AssistantMessage(message: ChatMessage) {
-    val text = markdown(message.text + if (message.streaming) " ▍" else "")
+    val base = markdown(message.text)
+    val text = if (message.streaming) {
+        // A softly pulsing cursor while the reply streams in.
+        val cursor by rememberInfiniteTransition(label = "cursor").animateFloat(
+            initialValue = 1f, targetValue = 0.2f,
+            animationSpec = infiniteRepeatable(tween(550), RepeatMode.Reverse),
+            label = "cursor",
+        )
+        val color = MaterialTheme.colorScheme.primary.copy(alpha = cursor)
+        buildAnnotatedString {
+            append(base)
+            withStyle(SpanStyle(color = color)) { append(" ▍") }
+        }
+    } else {
+        base
+    }
     Text(
         text,
-        inlineContent = swatches(text),
+        inlineContent = swatches(base),
         style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp, lineHeight = 25.sp),
         color = MaterialTheme.colorScheme.onSurface,
     )
 }
 
+/** Shown while the model works on a reply: a turning, breathing sparkle and a shimmering label. */
 @Composable
-internal fun ThinkingDots() {
+internal fun Thinking() {
+    val colors = MaterialTheme.colorScheme
     val transition = rememberInfiniteTransition(label = "thinking")
-    val phase by transition.animateFloat(
-        initialValue = 0f, targetValue = 3f,
-        animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Restart),
-        label = "phase",
+    val turn by transition.animateFloat(
+        initialValue = 0f, targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(2_400, easing = LinearEasing)),
+        label = "turn",
     )
-    Row(horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.padding(vertical = 8.dp, horizontal = 2.dp)) {
-        repeat(3) { index ->
-            val distance = minOf(kotlin.math.abs(phase - index), kotlin.math.abs(phase - 3 - index))
-            Box(
-                Modifier
-                    .size(8.dp)
-                    .alpha(0.35f + 0.65f * (1f - distance.coerceIn(0f, 1f)))
-                    .background(MaterialTheme.colorScheme.primary, CircleShape),
-            )
-        }
+    val breath by transition.animateFloat(
+        initialValue = 0.8f, targetValue = 1.1f,
+        animationSpec = infiniteRepeatable(tween(700, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "breath",
+    )
+    val sweep by transition.animateFloat(
+        initialValue = -150f, targetValue = 450f,
+        animationSpec = infiniteRepeatable(tween(1_400, easing = LinearEasing)),
+        label = "sweep",
+    )
+    Row(Modifier.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            Icons.Default.AutoAwesome, null, tint = colors.primary,
+            modifier = Modifier.size(22.dp).graphicsLayer { rotationZ = turn; scaleX = breath; scaleY = breath },
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(
+            "Thinking",
+            style = MaterialTheme.typography.bodyLarge.copy(
+                fontSize = 17.sp,
+                // A highlight that sweeps across the label; past its edges the text keeps the muted color.
+                brush = Brush.linearGradient(
+                    listOf(colors.onSurfaceVariant, colors.primary, colors.onSurfaceVariant),
+                    start = Offset(sweep - 100f, 0f),
+                    end = Offset(sweep + 100f, 0f),
+                ),
+            ),
+        )
     }
 }
 
