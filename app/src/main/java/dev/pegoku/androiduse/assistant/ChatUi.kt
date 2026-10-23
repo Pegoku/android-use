@@ -130,8 +130,10 @@ internal fun LazyListScope.chatItems(
 
 @Composable
 internal fun AssistantMessage(message: ChatMessage) {
+    val text = markdown(message.text + if (message.streaming) " ▍" else "")
     Text(
-        markdown(message.text + if (message.streaming) " ▍" else ""),
+        text,
+        inlineContent = swatches(text),
         style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp, lineHeight = 25.sp),
         color = MaterialTheme.colorScheme.onSurface,
     )
@@ -177,16 +179,20 @@ internal fun UserMessage(message: ChatMessage) {
                 message.attachments.forEach { AttachmentChip(it, height = 96.dp) }
             }
         }
-        if (message.text.isNotBlank()) Text(
-            message.text,
-            style = MaterialTheme.typography.bodyLarge,
-            color = colors.onPrimaryContainer,
-            modifier = Modifier
-                .widthIn(max = 300.dp)
-                .clip(RoundedCornerShape(20.dp, 6.dp, 20.dp, 20.dp))
-                .background(colors.primaryContainer)
-                .padding(horizontal = 14.dp, vertical = 10.dp),
-        )
+        if (message.text.isNotBlank()) {
+            val text = withSwatches(message.text)
+            Text(
+                text,
+                inlineContent = swatches(text),
+                style = MaterialTheme.typography.bodyLarge,
+                color = colors.onPrimaryContainer,
+                modifier = Modifier
+                    .widthIn(max = 300.dp)
+                    .clip(RoundedCornerShape(20.dp, 6.dp, 20.dp, 20.dp))
+                    .background(colors.primaryContainer)
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+            )
+        }
     }
 }
 
@@ -453,6 +459,7 @@ internal fun InputBar(
                         cursorColor = colors.primary,
                     ),
                     maxLines = 5,
+                    visualTransformation = HexColorHighlight,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                     keyboardActions = KeyboardActions(onSend = { submit() }),
                     modifier = Modifier.weight(1f).onPreviewKeyEvent { event ->
@@ -530,7 +537,10 @@ internal fun AttachmentChip(attachment: Attachment, height: androidx.compose.ui.
     }
 }
 
-/** Renders **bold**, *italic* and `code` spans; turns list markers into bullets and drops headings and link syntax. */
+/**
+ * Renders **bold**, *italic* and `code` spans; turns list markers into bullets and drops headings and link syntax.
+ * Hex colors get a swatch, so show the result with [swatches] as the Text's inlineContent.
+ */
 internal fun markdown(text: String): AnnotatedString = buildAnnotatedString {
     val cleaned = text
         .replace(Regex("""^#+\s*""", RegexOption.MULTILINE), "")
@@ -539,14 +549,14 @@ internal fun markdown(text: String): AnnotatedString = buildAnnotatedString {
     val token = Regex("""\*\*(.+?)\*\*|`([^`]+)`|(?<![*\w])\*(?!\s)([^*\n]+?)\*(?![*\w])""")
     var index = 0
     for (match in token.findAll(cleaned)) {
-        append(cleaned.substring(index, match.range.first))
+        appendWithSwatches(cleaned.substring(index, match.range.first))
         val (bold, code, italic) = match.destructured
         when {
-            bold.isNotEmpty() -> withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(bold) }
-            code.isNotEmpty() -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 15.sp)) { append(code) }
-            else -> withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { append(italic) }
+            bold.isNotEmpty() -> withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { appendWithSwatches(bold) }
+            code.isNotEmpty() -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 15.sp)) { appendWithSwatches(code) }
+            else -> withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { appendWithSwatches(italic) }
         }
         index = match.range.last + 1
     }
-    append(cleaned.substring(index))
+    appendWithSwatches(cleaned.substring(index))
 }
