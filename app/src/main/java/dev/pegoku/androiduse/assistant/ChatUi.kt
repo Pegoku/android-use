@@ -60,6 +60,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
@@ -68,6 +69,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.key.Key
@@ -77,6 +80,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -380,6 +384,15 @@ internal fun InputBar(
     val canAttach = attachments != null && !steering && !answering
     val attached = canAttach && attachments!!.items.isNotEmpty()
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> attachments?.add(uris) }
+    // A new chat starts with the cursor in the composer and the keyboard up.
+    val focus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    LaunchedEffect(Unit) {
+        ChatEngine.newChats.collect {
+            focus.requestFocus()
+            keyboard?.show()
+        }
+    }
     fun submit() {
         if ((text.isNotBlank() || attached) && !blocked && attachments?.loading.let { it == null || it == 0 }) {
             onSend(text)
@@ -462,7 +475,7 @@ internal fun InputBar(
                     visualTransformation = HexColorHighlight,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                     keyboardActions = KeyboardActions(onSend = { submit() }),
-                    modifier = Modifier.weight(1f).onPreviewKeyEvent { event ->
+                    modifier = Modifier.weight(1f).focusRequester(focus).onPreviewKeyEvent { event ->
                         // Enter sends (as in chat apps); Shift+Enter still inserts a line break.
                         if (event.key == Key.Enter && !event.isShiftPressed) {
                             if (event.type == KeyEventType.KeyDown) submit()

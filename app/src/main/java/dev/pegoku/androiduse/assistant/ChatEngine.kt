@@ -96,6 +96,10 @@ object ChatEngine {
         get() = _chatId.value
         set(value) { _chatId.value = value }
 
+    /** Emitted when the user starts a new chat, so the composer can take focus for it. */
+    private val _newChats = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val newChats: SharedFlow<Unit> = _newChats.asSharedFlow()
+
     fun newChat() {
         if (TaskRunner.state.value.running) return
         job?.cancel()
@@ -104,6 +108,7 @@ object ChatEngine {
         history.clear()
         _messages.value = emptyList()
         _busy.value = false
+        _newChats.tryEmit(Unit)
     }
 
     /** Picks up a saved conversation where it left off. Ignored while something is running. */
