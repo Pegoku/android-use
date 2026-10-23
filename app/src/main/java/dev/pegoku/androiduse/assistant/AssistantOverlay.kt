@@ -97,7 +97,7 @@ fun AssistantOverlay(
         ) {
             AnimatedVisibility(
                 visible = shown,
-                enter = slideInVertically(tween(280)) { it / 4 } + fadeIn(tween(220)),
+                enter = slideInVertically(tween(170)) { it / 6 } + fadeIn(tween(120)),
                 // Insets bound the whole area, so the sheet can never extend under the keyboard or bars.
                 modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding(),
             ) {
