@@ -212,3 +212,12 @@ alternating between screens can evade it. Recovery switches to the main model fo
 three turns; it does not terminate a navigation cycle. Earlier screen details are
 also removed from model context, making recovery harder. Traces now preserve that
 evidence for diagnosing the actual sequence instead of guessing from a final summary.
+
+Run the offline analyzer with Python 3 (no dependencies):
+
+```sh
+python3 scripts/analyze-traces.py /path/to/android-use-diagnostics.zip
+```
+
+It summarizes saved outcomes, model latency, retries, unchanged screens and repeated
+screen sequences. Loop flags are review leads, since revisiting a screen can be intentional.
