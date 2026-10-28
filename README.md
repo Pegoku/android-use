@@ -87,13 +87,13 @@ assistant over whatever app you're in:
   any with the bin icon.
 - **Other controls:** a mic for voice input, read-aloud, copy, new chat and minimize.
 
-Chat replies use the fast model (about 1 s until the reply starts streaming). Phone tasks use the
+Chat replies use the fast model. Phone tasks use the
 agent described below.
 
 ## Models
 
-Routine steps run on a **fast model** (default `gpt-6-luna`, about 2 s per turn). The **main model**
-(default `gpt-6.1-sol`, about 5 s per turn) takes over for a few turns when an action fails, the agent
+Routine steps run on a **fast model** (default `gpt-6.1-terra`). The **main model**
+(default `gpt-6.1-sol`) takes over for a few turns when an action fails, the agent
 repeats itself, or a turn changes nothing. Only the main model can end a task, so a "done" from the
 fast model is always double-checked. Clear the fast model field to use the main model throughout.
 
@@ -187,3 +187,28 @@ clipboard paste.
 ## License
 
 [GPL-3.0](LICENSE). Shizuku and the other dependencies use compatible licenses (Apache-2.0).
+
+## Exporting action traces
+
+In **Settings > Diagnostics**, tap **Export chats and actions** to save a ZIP locally.
+It contains saved conversations in `chats.json` and the last 30 task runs as
+`runs/*.jsonl`. Detailed actions are recorded only after installing this version;
+old chats contain outcomes, not recoverable action histories.
+
+Each trace records ordered timestamps and elapsed time, the chat ID, task and model
+settings, screen text and signatures, model calls and their duration, full tool
+arguments and results (including batch sub-actions), retries, steering, questions,
+approvals, and the final outcome. The task outcome and optional WhatsApp reporting
+are separate events. Events are appended during the run, so stopped runs remain
+inspectable. A run without `run_end` was interrupted, and a live export may have an
+incomplete last line. Screen images and authentication files are not exported.
+Exports can contain private screen text and entered values. Review them before sharing.
+
+For navigation loops, compare repeated `observation` signatures with the intervening
+`action_start` and `action_end` records, then check model switches and retries.
+Current loop detection only warns about identical tool arguments within ten recent
+actions, and unchanged consecutive screens. Changing element IDs or coordinates and
+alternating between screens can evade it. Recovery switches to the main model for
+three turns; it does not terminate a navigation cycle. Earlier screen details are
+also removed from model context, making recovery harder. Traces now preserve that
+evidence for diagnosing the actual sequence instead of guessing from a final summary.

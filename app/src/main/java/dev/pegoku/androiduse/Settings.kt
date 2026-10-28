@@ -52,7 +52,7 @@ class Settings(context: Context) {
 
     companion object {
         const val DEFAULT_MODEL = "gpt-6.1-sol"
-        const val DEFAULT_FAST_MODEL = "gpt-6-luna"
+        const val DEFAULT_FAST_MODEL = "gpt-6.1-terra"
         const val DEFAULT_REVIEWER_MODEL = "codex-auto-review"
         val EFFORTS = listOf("low", "medium", "high")
     }

@@ -32,6 +32,7 @@ data class AgentResult(val success: Boolean, val summary: String)
 /** Observe → ask the model → act loop driving the phone through [Device]. */
 class Agent(
     private val context: android.content.Context,
+    private val trace: RunTrace? = null,
     private val device: Device,
     private val model: String,
     private val fastModel: String?,
@@ -45,7 +46,7 @@ class Agent(
     private var task = ""
     private val stepLog = mutableListOf<String>()
 
-    private val client = CodexClient()
+    private val client = CodexClient(onEvent = { kind, detail -> trace?.event(kind, "detail" to detail) })
     private val notes = mutableListOf<String>()
 
     /** Conversation items; screens are kept separately so older screenshots can be elided. */
@@ -57,6 +58,7 @@ class Agent(
     private val instructions = instructions()
 
     suspend fun run(task: String): AgentResult {
+        trace?.event("agent_start", "task" to task)
         this.task = task
         history += Raw(userMessage("Task: $task"))
         MemoryStore.memories.value.takeIf { it.isNotEmpty() }?.let { memories ->
@@ -85,7 +87,10 @@ class Agent(
             val t1 = System.currentTimeMillis()
             val stepModel = if (fastModel == null || smartTurns > 0) model else fastModel
             if (smartTurns > 0) smartTurns--
+            trace?.event("model_start", "step" to step.toString(), "model" to stepModel, "observeMs" to (t1 - t0).toString())
             val output = client.respond(stepModel, effort, instructions, render(), Tools.definitions(shellEnabled))
+            trace?.event("model_end", "step" to step.toString(), "model" to stepModel, "durationMs" to (System.currentTimeMillis() - t1).toString(),
+                "output" to output.filter { it.type != "reasoning" }.toString())
             if (BuildConfig.DEBUG) android.util.Log.d("AndroidUseTiming", "step $step observe ${t1 - t0}ms model($stepModel) ${System.currentTimeMillis() - t1}ms")
             // Reasoning items are model-specific; leaving them out lets the fast and careful models share one history.
             output.filter { it.type != "reasoning" }.forEach { history += Raw(it) }
@@ -131,6 +136,7 @@ class Agent(
                 val callId = call["call_id"]!!.jsonPrimitive.content
                 val args = runCatching { Json.parseToJsonElement(call["arguments"]?.jsonPrimitive?.content ?: "{}").jsonObject }
                     .getOrDefault(JsonObject(emptyMap()))
+                trace?.event("action_start", "step" to step.toString(), "callId" to callId, "tool" to name, "arguments" to args.toString())
                 val result = when {
                     abortReason != null -> "Skipped: $abortReason."
                     name == "finish" && index > 0 ->
@@ -147,6 +153,7 @@ class Agent(
                                 escalate("double-checking the result", turns = Int.MAX_VALUE)
                                 "Before finishing, verify on the current screen that every part of the task was really done, then call finish again."
                             } else {
+                                trace?.event("action_end", "callId" to callId, "result" to summary, "success" to success.toString())
                                 return AgentResult(success, summary)
                             }
                         } else {
@@ -168,6 +175,7 @@ class Agent(
                         }
                     }
                 }
+                trace?.event("action_end", "callId" to callId, "result" to result)
                 log(LogKind.Result, result)
                 history += Raw(buildJsonObject {
                     put("type", "function_call_output")
@@ -289,8 +297,10 @@ class Agent(
                 if (previous == "launch_app") device.settle(600, 6_000) else device.settle(200, 1_500)
                 device.refreshTree()
             }
+            trace?.event("batch_action_start", "index" to index.toString(), "tool" to tool, "arguments" to args.toString())
             val output = if (kind in Tools.BATCH_ACTIONS) runCatching { execute(tool, args) }.getOrElse { "Error: ${it.message}" }
             else "Error: unknown action $kind"
+            trace?.event("batch_action_end", "index" to index.toString(), "result" to output)
             results += "${index + 1}. $kind: $output"
             if (output.startsWith("Error") || output.contains("failed", ignoreCase = true) || output.startsWith("No installed app")) {
                 if (index < actions.size - 1) results += "Stopped; ${actions.size - index - 1} remaining action(s) skipped."
@@ -394,6 +404,7 @@ class Agent(
                 append("UI element list unavailable: ${obs.treeError}. Use screenshot coordinates.\n")
             }
         }
+        trace?.event("observation", "step" to step.toString(), "package" to app, "signature" to signature?.toString(), "text" to text)
         if (BuildConfig.DEBUG) android.util.Log.d("AndroidUseObs", text.take(4000))
         return Screen(text, obs.jpegBase64, app)
     }

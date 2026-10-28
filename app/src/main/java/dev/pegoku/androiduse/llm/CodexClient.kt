@@ -29,7 +29,10 @@ import java.util.UUID
 class CodexException(message: String, val retryable: Boolean = false) : Exception(message)
 
 /** Minimal client for the ChatGPT-subscription Codex Responses endpoint. */
-class CodexClient(private val sessionId: String = UUID.randomUUID().toString()) {
+class CodexClient(
+    private val sessionId: String = UUID.randomUUID().toString(),
+    private val onEvent: ((String, String) -> Unit)? = null,
+) {
     private val json = Json { ignoreUnknownKeys = true }
 
     /** Sends one turn and returns the completed output items (reasoning, messages, function calls). */
@@ -69,13 +72,16 @@ class CodexClient(private val sessionId: String = UUID.randomUUID().toString()) 
                 return send(body, onTextDelta)
             } catch (_: UnauthorizedException) {
                 if (refreshed) throw CodexException("Codex rejected the credentials. Sign in again.")
+                onEvent?.invoke("auth_refresh", "Refreshing expired credentials")
                 refreshed = true
                 CodexAuth.fresh(force = true)
             } catch (e: CodexException) {
                 if (!e.retryable || ++attempt > MAX_RETRIES) throw e
+                onEvent?.invoke("retry", "Attempt $attempt, delay ${backoff(attempt)}ms: ${e.message}")
                 delay(backoff(attempt))
             } catch (e: IOException) {
                 if (++attempt > MAX_RETRIES) throw CodexException("Network error: ${e.message}")
+                onEvent?.invoke("retry", "Attempt $attempt, delay ${backoff(attempt)}ms: ${e.message}")
                 delay(backoff(attempt))
             }
         }

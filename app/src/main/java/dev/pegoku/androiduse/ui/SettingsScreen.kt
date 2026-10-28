@@ -42,6 +42,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import dev.pegoku.androiduse.agent.RunTraceStore
+import dev.pegoku.androiduse.assistant.ChatStore
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -94,6 +101,7 @@ fun SettingsScreen(settings: Settings, onBack: () -> Unit) {
                     AssistantCard(shizuku)
                 }
             }
+            item { DiagnosticsSection() }
             item { ModelsSection(settings) }
             item { AgentSection(settings) }
             item { SafetySection(settings) }
@@ -143,6 +151,7 @@ private fun ModelsSection(settings: Settings) {
     var effort by remember { mutableStateOf(settings.effort) }
     var models by remember { mutableStateOf<List<String>>(emptyList()) }
     var menuOpen by remember { mutableStateOf(false) }
+    var fastMenuOpen by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         models = withContext(Dispatchers.IO) { runCatching { CodexClient.models() }.getOrDefault(emptyList()) }
     }
@@ -168,15 +177,31 @@ private fun ModelsSection(settings: Settings) {
                 }
             }
         }
-        OutlinedTextField(
-            value = fastModel,
-            onValueChange = { fastModel = it; settings.fastModel = it },
-            label = { Text("Fast model") },
-            placeholder = { Text("Leave empty to use the main model for everything") },
-            supportingText = { Text("Runs routine steps. The assistant chat also uses it.") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
+        ExposedDropdownMenuBox(expanded = fastMenuOpen, onExpandedChange = { fastMenuOpen = it }) {
+            OutlinedTextField(
+                value = fastModel,
+                onValueChange = { fastModel = it; settings.fastModel = it },
+                label = { Text("Fast model") },
+                placeholder = { Text("Leave empty to use the main model for everything") },
+                supportingText = { Text("Runs routine steps. The assistant chat also uses it.") },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = fastMenuOpen) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryEditable),
+            )
+            ExposedDropdownMenu(expanded = fastMenuOpen, onDismissRequest = { fastMenuOpen = false }) {
+                DropdownMenuItem(
+                    text = { Text("Use main model") },
+                    onClick = { fastModel = ""; settings.fastModel = ""; fastMenuOpen = false },
+                )
+                (listOf(Settings.DEFAULT_FAST_MODEL) + models).distinct().forEach { slug ->
+                    DropdownMenuItem(
+                        text = { Text(slug) },
+                        onClick = { fastModel = slug; settings.fastModel = slug; fastMenuOpen = false },
+                        contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding,
+                    )
+                }
+            }
+        }
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Reasoning effort", style = MaterialTheme.typography.bodyLarge)
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
@@ -352,5 +377,34 @@ private fun MemoryRow(memory: Memory) {
                 IconButton(onClick = { MemoryStore.remove(memory.id) }) { Icon(Icons.Default.Delete, "Delete", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
         }
+    }
+}
+
+@Composable
+private fun DiagnosticsSection() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var exporting by remember { mutableStateOf(false) }
+    var result by remember { mutableStateOf<String?>(null) }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        if (uri != null) scope.launch {
+            exporting = true
+            result = null
+            val chats = ChatStore.chats.value.toList()
+            result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val output = context.contentResolver.openOutputStream(uri, "w") ?: error("Cannot open export file")
+                    RunTraceStore.export(output, chats)
+                }.fold({ "Export saved." }, { "Export failed: ${it.message}" })
+            }
+            exporting = false
+        }
+    }
+    Section("Diagnostics", "Export saved chats and the last 30 action traces to analyze delays and navigation loops.") {
+        Hint("Includes private chat text, screen text and action arguments. Review before sharing. Detailed traces are only available for new runs.")
+        Button(enabled = !exporting, onClick = { launcher.launch("android-use-diagnostics-${System.currentTimeMillis()}.zip") }) {
+            Text(if (exporting) "Exporting…" else "Export chats and actions")
+        }
+        result?.let { Hint(it) }
     }
 }

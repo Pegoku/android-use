@@ -40,6 +40,8 @@ object TaskRunner {
 
     @Volatile private var onFinished: (suspend (AgentResult) -> Unit)? = null
 
+    @Volatile private var trace: RunTrace? = null
+
     /** What the owner typed while the task runs, waiting for the agent's next step. */
     private val steering = java.util.concurrent.ConcurrentLinkedQueue<String>()
 
@@ -96,6 +98,7 @@ object TaskRunner {
     }
 
     private fun log(kind: LogKind, text: String) {
+        trace?.event("log", "level" to kind.name, "text" to text)
         Log.i("AndroidUse", "$kind: $text")
         _state.update {
             val action = kind == LogKind.Action
@@ -111,10 +114,17 @@ object TaskRunner {
 
     /** Runs the task and the optional WhatsApp report. Called from the service's coroutine. */
     suspend fun execute(context: Context, task: String, fromHome: Boolean): AgentResult {
+        trace = RunTraceStore.start()
+        trace?.event("run_start", "task" to task, "fromHome" to fromHome.toString(),
+            "chatId" to dev.pegoku.androiduse.assistant.ChatEngine.currentChat.value.toString(),
+            "version" to dev.pegoku.androiduse.BuildConfig.VERSION_NAME)
         val settings = Settings(context)
+        trace?.event("settings", "model" to settings.model, "fastModel" to settings.fastModel,
+            "effort" to settings.effort, "maxSteps" to settings.maxSteps.toString(), "reportEnabled" to settings.reportEnabled.toString())
         val device = Device(context)
         fun agent(maxSteps: Int, task: String) = Agent(
             context = context,
+            trace = trace,
             device = device,
             model = settings.model,
             fastModel = settings.fastModel.takeIf { it.isNotBlank() && it != settings.model },
@@ -151,6 +161,7 @@ object TaskRunner {
         }
         log(if (result.success) LogKind.Done else LogKind.Error, (if (result.success) "Done: " else "Failed: ") + result.summary)
 
+        trace?.event("task_end", "success" to result.success.toString(), "summary" to result.summary)
         if (settings.reportEnabled && settings.reportChat.isNotBlank()) {
             phase("Reporting to WhatsApp")
             log(LogKind.Info, "Reporting result to WhatsApp chat \"${settings.reportChat}\"")
@@ -178,6 +189,8 @@ object TaskRunner {
         _state.update { if (it.running) it.copy(running = false, phase = "Stopped") else it }
         val callback = onFinished
         onFinished = null
+        trace?.event("run_end", "success" to _state.value.result?.success?.toString(), "summary" to _state.value.result?.summary)
+        trace = null
         callback?.invoke(_state.value.result ?: AgentResult(false, "Stopped before finishing"))
     }
 }

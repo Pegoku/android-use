@@ -20,6 +20,7 @@ class App : Application() {
         CodexAuth.init(this)
         MemoryStore.init(this)
         ChatStore.init(this)
+        dev.pegoku.androiduse.agent.RunTraceStore.init(filesDir)
         ShizukuShell.init()
     }
 }
