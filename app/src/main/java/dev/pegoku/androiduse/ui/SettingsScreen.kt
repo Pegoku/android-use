@@ -1,5 +1,9 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
+
 package dev.pegoku.androiduse.ui
 
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -31,9 +35,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -83,7 +84,7 @@ fun SettingsScreen(settings: Settings, onBack: () -> Unit) {
         topBar = {
             TopAppBar(
                 title = { Text("Settings", style = MaterialTheme.typography.titleLarge) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
+                navigationIcon = { IconButton(shapes = IconButtonDefaults.shapes(), onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = page, scrolledContainerColor = page),
             )
         },
@@ -221,16 +222,7 @@ private fun ModelsSection(settings: Settings) {
         }
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Reasoning effort", style = MaterialTheme.typography.bodyLarge)
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                Settings.EFFORTS.forEachIndexed { index, level ->
-                    SegmentedButton(
-                        selected = effort == level,
-                        onClick = { effort = level; settings.effort = level },
-                        shape = SegmentedButtonDefaults.itemShape(index, Settings.EFFORTS.size),
-                        label = { Text(level.replaceFirstChar(Char::uppercase)) },
-                    )
-                }
-            }
+            ChoiceRow(Settings.EFFORTS, effort, label = { it.replaceFirstChar(Char::uppercase) }, onSelect = { effort = it; settings.effort = it })
             Hint("Low is fastest. Higher effort thinks longer on every step.")
         }
     }
@@ -262,20 +254,11 @@ private fun SafetySection(settings: Settings) {
     var reviewerModel by remember { mutableStateOf(settings.reviewerModel) }
     var shellEnabled by remember { mutableStateOf(settings.shellEnabled) }
     Section("Sensitive actions", "Shell commands and messages to people the task didn't name.") {
-        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-            SegmentedButton(
-                selected = approvalMode == Guard.MODE_AUTO,
-                onClick = { approvalMode = Guard.MODE_AUTO; settings.approvalMode = Guard.MODE_AUTO },
-                shape = SegmentedButtonDefaults.itemShape(0, 2),
-                label = { Text("Review automatically") },
-            )
-            SegmentedButton(
-                selected = approvalMode == Guard.MODE_ASK,
-                onClick = { approvalMode = Guard.MODE_ASK; settings.approvalMode = Guard.MODE_ASK },
-                shape = SegmentedButtonDefaults.itemShape(1, 2),
-                label = { Text("Always ask me") },
-            )
-        }
+        ChoiceRow(
+            listOf(Guard.MODE_AUTO, Guard.MODE_ASK), approvalMode,
+            label = { if (it == Guard.MODE_AUTO) "Review automatically" else "Always ask me" },
+            onSelect = { approvalMode = it; settings.approvalMode = it },
+        )
         Hint(
             if (approvalMode == Guard.MODE_AUTO) {
                 "A reviewer model checks each one against your task. Clear cases go through, unrelated or injected ones are blocked, and you're asked when it's unsure."
@@ -338,7 +321,7 @@ private fun MemorySection() {
             onValueChange = { newMemory = it },
             placeholder = { Text("Something to remember, e.g. \"My work email is on the Outlook app\"") },
             trailingIcon = {
-                IconButton(onClick = { MemoryStore.add(newMemory); newMemory = "" }, enabled = newMemory.isNotBlank()) {
+                IconButton(shapes = IconButtonDefaults.shapes(), onClick = { MemoryStore.add(newMemory); newMemory = "" }, enabled = newMemory.isNotBlank()) {
                     Icon(Icons.Default.Add, "Add memory")
                 }
             },
@@ -356,7 +339,7 @@ private fun MemorySection() {
                     MemoryRow(memory)
                 }
             }
-            OutlinedButton(onClick = { confirmClear = true }) { Text("Forget everything", color = MaterialTheme.colorScheme.error) }
+            OutlinedButton(shapes = ButtonDefaults.shapes(), onClick = { confirmClear = true }) { Text("Forget everything", color = MaterialTheme.colorScheme.error) }
         }
     }
     if (confirmClear) {
@@ -364,8 +347,8 @@ private fun MemorySection() {
             onDismissRequest = { confirmClear = false },
             title = { Text("Forget everything?") },
             text = { Text("All ${memories.size} memories will be deleted. Tasks start learning again from scratch.") },
-            confirmButton = { TextButton(onClick = { MemoryStore.clear(); confirmClear = false }) { Text("Forget", color = MaterialTheme.colorScheme.error) } },
-            dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Keep") } },
+            confirmButton = { TextButton(shapes = ButtonDefaults.shapes(), onClick = { MemoryStore.clear(); confirmClear = false }) { Text("Forget", color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(shapes = ButtonDefaults.shapes(), onClick = { confirmClear = false }) { Text("Keep") } },
         )
     }
 }
@@ -378,8 +361,8 @@ private fun MemoryRow(memory: Memory) {
         if (editing) {
             OutlinedTextField(value = text, onValueChange = { text = it }, modifier = Modifier.fillMaxWidth().padding(end = 12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(top = 4.dp)) {
-                Button(onClick = { MemoryStore.update(memory.id, text); editing = false }, enabled = text.isNotBlank()) { Text("Save") }
-                TextButton(onClick = { text = memory.text; editing = false }) { Text("Cancel") }
+                Button(shapes = ButtonDefaults.shapes(), onClick = { MemoryStore.update(memory.id, text); editing = false }, enabled = text.isNotBlank()) { Text("Save") }
+                TextButton(shapes = ButtonDefaults.shapes(), onClick = { text = memory.text; editing = false }) { Text("Cancel") }
             }
         } else {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -387,8 +370,8 @@ private fun MemoryRow(memory: Memory) {
                     memory.app?.let { Eyebrow(it, color = MaterialTheme.colorScheme.primary) }
                     Text(memory.text, style = MaterialTheme.typography.bodyMedium)
                 }
-                IconButton(onClick = { editing = true }) { Icon(Icons.Default.Edit, "Edit", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
-                IconButton(onClick = { MemoryStore.remove(memory.id) }) { Icon(Icons.Default.Delete, "Delete", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+                IconButton(shapes = IconButtonDefaults.shapes(), onClick = { editing = true }) { Icon(Icons.Default.Edit, "Edit", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+                IconButton(shapes = IconButtonDefaults.shapes(), onClick = { MemoryStore.remove(memory.id) }) { Icon(Icons.Default.Delete, "Delete", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
         }
     }
@@ -416,7 +399,7 @@ private fun DiagnosticsSection() {
     }
     Section("Diagnostics", "Export saved chats and the last 30 action traces to analyze delays and navigation loops.") {
         Hint("Includes private chat text, screen text and action arguments. Review before sharing. Detailed traces are only available for new runs.")
-        OutlinedButton(enabled = !exporting, onClick = { launcher.launch("android-use-diagnostics-${System.currentTimeMillis()}.zip") }) {
+        OutlinedButton(shapes = ButtonDefaults.shapes(), enabled = !exporting, onClick = { launcher.launch("android-use-diagnostics-${System.currentTimeMillis()}.zip") }) {
             Text(if (exporting) "Exporting…" else "Export chats and actions")
         }
         result?.let { Hint(it) }

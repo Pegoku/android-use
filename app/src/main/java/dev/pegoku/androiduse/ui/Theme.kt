@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
+
 package dev.pegoku.androiduse.ui
 
 import android.content.Context
@@ -5,7 +7,8 @@ import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MaterialExpressiveTheme
+import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
@@ -33,7 +36,7 @@ import dev.pegoku.androiduse.Settings
 /**
  * App theme. The palette borrows from Android's own developer overlays: ultramarine for the
  * interface, like layout bounds, and magenta for anything the agent touches, like a tap marker.
- * Corners are tight; only touch points (the mark, send, the avatar) are round.
+ * Corners are tight; only touch points (the mark, buttons, the avatar) are round.
  */
 @Composable
 fun AndroidUseTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
@@ -45,7 +48,14 @@ fun AndroidUseTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Compos
         darkTheme -> InkDark
         else -> InkLight
     }
-    MaterialTheme(colorScheme = colors, typography = AppTypography, shapes = AppShapes, content = content)
+    // Material 3 Expressive: its components, with spring motion that overshoots a little and settles.
+    MaterialExpressiveTheme(
+        colorScheme = colors,
+        motionScheme = MotionScheme.expressive(),
+        typography = AppTypography,
+        shapes = AppShapes,
+        content = content,
+    )
 }
 
 /** Look-and-feel choices the theme reads live, so changing one in Settings repaints at once. */

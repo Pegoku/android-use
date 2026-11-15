@@ -1,5 +1,11 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
+
 package dev.pegoku.androiduse.assistant
 
+import androidx.compose.material3.LoadingIndicator
+import androidx.compose.material3.LinearWavyProgressIndicator
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.FilledIconButton
 import android.text.format.DateUtils
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -56,10 +62,8 @@ import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -147,8 +151,8 @@ internal fun LazyListScope.chatItems(
             busy && !run.running && !(last?.role == ChatRole.Assistant && last.streaming && last.text.isNotEmpty()) -> Thinking()
             !busy && last?.role == ChatRole.Assistant -> Row(Modifier.offset(x = (-10).dp), verticalAlignment = Alignment.CenterVertically) {
                 val muted = MaterialTheme.colorScheme.onSurfaceVariant
-                IconButton(onClick = { onCopy(last.text) }, modifier = Modifier.size(40.dp)) { Icon(Icons.Outlined.ContentCopy, "Copy", tint = muted, modifier = Modifier.size(18.dp)) }
-                IconButton(onClick = { onSpeak(last.text) }, modifier = Modifier.size(40.dp)) { Icon(Icons.AutoMirrored.Outlined.VolumeUp, "Read aloud", tint = muted, modifier = Modifier.size(18.dp)) }
+                IconButton(shapes = IconButtonDefaults.shapes(), onClick = { onCopy(last.text) }, modifier = Modifier.size(40.dp)) { Icon(Icons.Outlined.ContentCopy, "Copy", tint = muted, modifier = Modifier.size(18.dp)) }
+                IconButton(shapes = IconButtonDefaults.shapes(), onClick = { onSpeak(last.text) }, modifier = Modifier.size(40.dp)) { Icon(Icons.AutoMirrored.Outlined.VolumeUp, "Read aloud", tint = muted, modifier = Modifier.size(18.dp)) }
             }
         }
     }
@@ -304,8 +308,8 @@ internal fun TaskRow(message: ChatMessage, latest: Boolean = false, onShowSteps:
                             run.lastAction?.let(LiveNotification::describe) ?: run.phase.ifBlank { "Starting" },
                             style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis,
                         )
-                        LinearProgressIndicator(
-                            Modifier.padding(top = 2.dp).fillMaxWidth().height(3.dp).clip(CircleShape),
+                        LinearWavyProgressIndicator(
+                            Modifier.padding(top = 2.dp).fillMaxWidth(),
                             color = colors.tertiary, trackColor = colors.tertiary.copy(alpha = 0.16f),
                         )
                     }
@@ -344,7 +348,7 @@ internal fun TaskRow(message: ChatMessage, latest: Boolean = false, onShowSteps:
 
 @Composable
 private fun CardAction(label: String, icon: ImageVector, tint: Color, onClick: () -> Unit) {
-    TextButton(onClick = onClick, contentPadding = PaddingValues(horizontal = 10.dp), colors = ButtonDefaults.textButtonColors(contentColor = tint)) {
+    TextButton(shapes = ButtonDefaults.shapes(), onClick = onClick, contentPadding = PaddingValues(horizontal = 10.dp), colors = ButtonDefaults.textButtonColors(contentColor = tint)) {
         Icon(icon, null, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(6.dp))
         Text(label, style = MaterialTheme.typography.labelLarge)
@@ -439,7 +443,7 @@ internal fun RecentChatRow(chat: SavedChat, selected: Boolean = false, onOpen: (
                 style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant,
             )
         }
-        IconButton(onClick = onDelete) {
+        IconButton(shapes = IconButtonDefaults.shapes(), onClick = onDelete) {
             Icon(Icons.Outlined.Delete, "Delete chat", tint = colors.onSurfaceVariant.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
         }
     }
@@ -513,12 +517,12 @@ internal fun InputBar(
                             )
                         }
                     }
-                    if (attachments.loading > 0) CircularProgressIndicator(Modifier.padding(8.dp).size(22.dp), strokeWidth = 2.5.dp)
+                    if (attachments.loading > 0) LoadingIndicator(Modifier.size(40.dp))
                 }
             }
             Row(Modifier.padding(horizontal = 4.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (canAttach) {
-                    IconButton(onClick = { picker.launch(arrayOf("*/*")) }) { Icon(Icons.Outlined.AttachFile, "Attach files", tint = colors.onSurfaceVariant) }
+                    IconButton(shapes = IconButtonDefaults.shapes(), onClick = { picker.launch(arrayOf("*/*")) }) { Icon(Icons.Outlined.AttachFile, "Attach files", tint = colors.onSurfaceVariant) }
                 }
                 if (screen != null) {
                     // Attached screen: thumbnail with a tap-to-remove affordance.
@@ -534,7 +538,7 @@ internal fun InputBar(
                         )
                     }
                 } else if (canShare) {
-                    IconButton(onClick = onToggleScreen) { Icon(Icons.Outlined.AddAPhoto, "Attach screen", tint = colors.onSurfaceVariant) }
+                    IconButton(shapes = IconButtonDefaults.shapes(), onClick = onToggleScreen) { Icon(Icons.Outlined.AddAPhoto, "Attach screen", tint = colors.onSurfaceVariant) }
                 } else if (!canAttach) {
                     Spacer(Modifier.width(8.dp))
                 }
@@ -577,20 +581,19 @@ internal fun InputBar(
                     },
                 )
                 if ((text.isNotBlank() || attached) && !listening) {
-                    Surface(onClick = ::submit, enabled = !blocked, shape = CircleShape, color = if (blocked) colors.surfaceContainerHighest else colors.primary) {
-                        Icon(
-                            Icons.Default.ArrowUpward, "Send",
-                            tint = if (blocked) colors.onSurfaceVariant else colors.onPrimary,
-                            modifier = Modifier.padding(9.dp).size(22.dp),
-                        )
+                    FilledIconButton(onClick = ::submit, shapes = IconButtonDefaults.shapes(), enabled = !blocked) {
+                        Icon(Icons.Default.ArrowUpward, "Send", modifier = Modifier.size(22.dp))
                     }
                 } else {
-                    Surface(onClick = onMic, shape = CircleShape, color = if (listening) colors.tertiary else Color.Transparent) {
-                        Icon(
-                            Icons.Default.Mic, if (listening) "Stop listening" else "Speak",
-                            tint = if (listening) colors.onTertiary else colors.onSurfaceVariant,
-                            modifier = Modifier.padding(9.dp).size(22.dp),
-                        )
+                    FilledIconButton(
+                        onClick = onMic,
+                        shapes = IconButtonDefaults.shapes(),
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = if (listening) colors.tertiary else Color.Transparent,
+                            contentColor = if (listening) colors.onTertiary else colors.onSurfaceVariant,
+                        ),
+                    ) {
+                        Icon(Icons.Default.Mic, if (listening) "Stop listening" else "Speak", modifier = Modifier.size(22.dp))
                     }
                 }
                 Spacer(Modifier.width(4.dp))

@@ -1,5 +1,16 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
+
 package dev.pegoku.androiduse.ui
 
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.Role
+import androidx.compose.material3.ToggleButton
+import androidx.compose.material3.ButtonGroupDefaults
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -89,3 +100,28 @@ fun Eyebrow(text: String, modifier: Modifier = Modifier, color: Color = Material
 /** The hairline around a card. */
 @Composable
 fun hairline(): BorderStroke = BorderStroke(1.dp, MaterialTheme.colorScheme.hairline)
+
+/**
+ * A choice between a few options, as a connected group of toggle buttons: the picked one fills
+ * and rounds off, and each squeezes under the finger.
+ */
+@Composable
+fun <T> ChoiceRow(options: List<T>, selected: T, label: (T) -> String, onSelect: (T) -> Unit, modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween)) {
+        options.forEachIndexed { index, option ->
+            ToggleButton(
+                checked = option == selected,
+                onCheckedChange = { if (it) onSelect(option) },
+                shapes = when (index) {
+                    0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+                    options.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
+                    else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+                },
+                contentPadding = PaddingValues(horizontal = 8.dp),
+                modifier = Modifier.weight(1f).semantics { role = Role.RadioButton },
+            ) {
+                Text(label(option), style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+}

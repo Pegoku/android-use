@@ -1,5 +1,8 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
+
 package dev.pegoku.androiduse.ui
 
+import androidx.compose.material3.IconButtonDefaults
 import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -281,7 +284,7 @@ private fun ChatScreen(
                     Modifier.fillMaxWidth().statusBarsPadding().height(60.dp).padding(horizontal = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    IconButton(onClick = { scope.launch { drawer.open() } }) { Icon(Icons.Outlined.Menu, "Chats") }
+                    IconButton(shapes = IconButtonDefaults.shapes(), onClick = { scope.launch { drawer.open() } }) { Icon(Icons.Outlined.Menu, "Chats") }
                     Column(Modifier.weight(1f).padding(start = 4.dp)) {
                         // The mark ripples for as long as the agent has its finger on the phone.
                         Wordmark(active = run.running)
@@ -292,7 +295,7 @@ private fun ChatScreen(
                             modifier = Modifier.padding(start = 30.dp),
                         )
                     }
-                    IconButton(onClick = ChatEngine::newChat, enabled = messages.isNotEmpty() && !run.running) { Icon(Icons.Outlined.Edit, "New chat") }
+                    IconButton(shapes = IconButtonDefaults.shapes(), onClick = ChatEngine::newChat, enabled = messages.isNotEmpty() && !run.running) { Icon(Icons.Outlined.Edit, "New chat") }
                     Avatar(tokens, onClick = onOpenSettings)
                 }
             },
@@ -438,7 +441,7 @@ private fun Drawer(
     Column(Modifier.fillMaxSize().navigationBarsPadding()) {
         Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Wordmark(Modifier.weight(1f))
-            IconButton(onClick = onClose) { Icon(Icons.Outlined.Close, "Close") }
+            IconButton(shapes = IconButtonDefaults.shapes(), onClick = onClose) { Icon(Icons.Outlined.Close, "Close") }
         }
         Surface(
             onClick = onNewChat,
@@ -500,7 +503,7 @@ private fun dayOf(time: Long): String = when {
 private fun Avatar(tokens: CodexTokens?, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     val initial = tokens?.email?.firstOrNull()?.uppercaseChar()?.toString() ?: "?"
-    IconButton(onClick = onClick) {
+    IconButton(shapes = IconButtonDefaults.shapes(), onClick = onClick) {
         Box(
             Modifier.size(32.dp).background(if (tokens != null) colors.primaryContainer else colors.surfaceContainerHighest, CircleShape),
             contentAlignment = Alignment.Center,

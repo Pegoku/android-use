@@ -1,5 +1,8 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
+
 package dev.pegoku.androiduse.ui
 
+import androidx.compose.material3.ButtonDefaults
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -166,8 +169,8 @@ internal fun ApprovalCard(request: ApprovalRequest) {
             Text(request.title, style = MaterialTheme.typography.titleMedium, color = colors.onSurface)
             Text(request.detail, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
             Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { Approvals.answer(request.id, true) }) { Text("Approve") }
-                OutlinedButton(onClick = { Approvals.answer(request.id, false) }) { Text("Deny") }
+                Button(shapes = ButtonDefaults.shapes(), onClick = { Approvals.answer(request.id, true) }) { Text("Approve") }
+                OutlinedButton(shapes = ButtonDefaults.shapes(), onClick = { Approvals.answer(request.id, false) }) { Text("Deny") }
             }
         }
     }
@@ -242,10 +245,10 @@ internal fun ShizukuStep(shizuku: ShizukuState) {
     when (shizuku) {
         ShizukuState.Ready -> StepRow(done = true, title = "Shizuku", status = "Connected.")
         ShizukuState.PermissionNeeded -> StepRow(done = false, title = "Shizuku", status = "Running, but Android Use isn't allowed to use it yet.") {
-            FilledTonalButton(onClick = ShizukuShell::requestPermission) { Text("Allow") }
+            FilledTonalButton(shapes = ButtonDefaults.shapes(), onClick = ShizukuShell::requestPermission) { Text("Allow") }
         }
         ShizukuState.NotRunning -> StepRow(done = false, title = "Shizuku", status = "Not running. Start it with wireless debugging or root, then come back.") {
-            FilledTonalButton(onClick = {
+            FilledTonalButton(shapes = ButtonDefaults.shapes(), onClick = {
                 val launch = context.packageManager.getLaunchIntentForPackage("moe.shizuku.privileged.api")
                     ?: Intent(Intent.ACTION_VIEW, Uri.parse("https://shizuku.rikka.app/download/"))
                 context.startActivity(launch)
@@ -273,14 +276,14 @@ internal fun SignInStep(tokens: CodexTokens?) {
     when {
         tokens != null -> StepRow(done = true, title = "ChatGPT", status = "Signed in as ${tokens.email ?: "unknown"}.")
         pending != null -> StepRow(done = false, title = "ChatGPT", status = "Finish signing in in the browser. If the ChatGPT app opens instead or says your session ended, copy the link into a browser.") {
-            OutlinedButton(onClick = {
+            OutlinedButton(shapes = ButtonDefaults.shapes(), onClick = {
                 context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Sign-in link", pending.url))
                 message = "Link copied."
             }) { Text("Copy link") }
-            TextButton(onClick = { pending.cancel() }) { Text("Cancel") }
+            TextButton(shapes = ButtonDefaults.shapes(), onClick = { pending.cancel() }) { Text("Cancel") }
         }
         else -> StepRow(done = false, title = "ChatGPT", status = "Sign in with the account whose plan should be used.") {
-            FilledTonalButton(onClick = {
+            FilledTonalButton(shapes = ButtonDefaults.shapes(), onClick = {
                 val started = runCatching { CodexAuth.startLogin() }.getOrElse {
                     message = "Couldn't start sign-in: ${it.message}"
                     return@FilledTonalButton
@@ -293,7 +296,7 @@ internal fun SignInStep(tokens: CodexTokens?) {
                     login = null
                 }
             }) { Text("Sign in") }
-            OutlinedButton(onClick = { importLauncher.launch(arrayOf("application/json", "text/plain", "*/*")) }) { Text("Import auth.json") }
+            OutlinedButton(shapes = ButtonDefaults.shapes(), onClick = { importLauncher.launch(arrayOf("application/json", "text/plain", "*/*")) }) { Text("Import auth.json") }
         }
     }
     message?.let {
@@ -321,7 +324,7 @@ internal fun AccountCard(tokens: CodexTokens, shizukuReady: Boolean) {
                     Eyebrow(tokens.plan?.let { "$it plan" } ?: "ChatGPT")
                     Text(tokens.email ?: "Signed in", style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                TextButton(
+                TextButton(shapes = ButtonDefaults.shapes(), 
                     onClick = { scope.launch { refreshing = true; CodexUsageStore.refresh(); refreshing = false } },
                     enabled = !refreshing,
                 ) { Text(if (refreshing) "Refreshing…" else "Refresh") }
@@ -339,7 +342,7 @@ internal fun AccountCard(tokens: CodexTokens, shizukuReady: Boolean) {
                 Box(Modifier.size(8.dp).background(if (shizukuReady) colors.success else colors.error, CircleShape))
                 Spacer(Modifier.width(8.dp))
                 Hint(if (shizukuReady) "Shizuku connected" else "Shizuku not connected", modifier = Modifier.weight(1f))
-                TextButton(onClick = { CodexAuth.signOut(); CodexUsageStore.clear() }) { Text("Sign out") }
+                TextButton(shapes = ButtonDefaults.shapes(), onClick = { CodexAuth.signOut(); CodexUsageStore.clear() }) { Text("Sign out") }
             }
         }
     }
@@ -418,7 +421,7 @@ internal fun AssistantCard(shizuku: ShizukuState) {
                     Eyebrow(if (isDefault) "Default assistant" else "Assistant", color = if (isDefault) colors.success else colors.onSurfaceVariant)
                     Text("Over any app", style = MaterialTheme.typography.titleMedium)
                 }
-                TextButton(onClick = { context.startActivity(AssistantActivity.intent(context).putExtra(AssistantActivity.EXTRA_RESUMED, false)) }) {
+                TextButton(shapes = ButtonDefaults.shapes(), onClick = { context.startActivity(AssistantActivity.intent(context).putExtra(AssistantActivity.EXTRA_RESUMED, false)) }) {
                     Text("Try it")
                 }
             }
@@ -429,7 +432,7 @@ internal fun AssistantCard(shizuku: ShizukuState) {
                 color = colors.onSurfaceVariant,
             )
             if (!isDefault) {
-                Button(onClick = {
+                Button(shapes = ButtonDefaults.shapes(), onClick = {
                     scope.launch {
                         val role = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && shizuku == ShizukuState.Ready) {
                             runCatching {
@@ -466,7 +469,7 @@ internal fun AssistantCard(shizuku: ShizukuState) {
                 }
             }
             // Android's own page for picking the digital assistant (switch back to Gemini, etc.).
-            OutlinedButton(onClick = { openAssistantSettings(context) }) { Text("Change assistant") }
+            OutlinedButton(shapes = ButtonDefaults.shapes(), onClick = { openAssistantSettings(context) }) { Text("Change assistant") }
             message?.let { Hint(it) }
         }
     }
