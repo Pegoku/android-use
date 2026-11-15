@@ -267,10 +267,13 @@ internal fun TaskRow(message: ChatMessage, latest: Boolean = false, onShowSteps:
         border = hairline(),
         modifier = Modifier.fillMaxWidth(),
     ) {
+        val showSteps = onShowSteps.takeIf { mine && run.log.isNotEmpty() }
+        val hasActions = running || showSteps != null || message.detail != null
         Column(
             Modifier
                 .clickable(enabled = message.detail != null) { expanded = !expanded }
-                .padding(14.dp)
+                // The action buttons bring their own breathing room at the bottom.
+                .padding(start = 14.dp, end = 14.dp, top = 14.dp, bottom = if (hasActions) 2.dp else 14.dp)
                 .animateContentSize(),
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -322,9 +325,8 @@ internal fun TaskRow(message: ChatMessage, latest: Boolean = false, onShowSteps:
             if (expanded && message.detail != null) {
                 Text(message.detail, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant, modifier = Modifier.padding(top = 10.dp))
             }
-            val showSteps = onShowSteps.takeIf { mine && run.log.isNotEmpty() }
-            if (running || showSteps != null || message.detail != null) {
-                Row(Modifier.padding(top = 6.dp).offset(x = (-10).dp), verticalAlignment = Alignment.CenterVertically) {
+            if (hasActions) {
+                Row(Modifier.padding(top = 2.dp).offset(x = (-10).dp), verticalAlignment = Alignment.CenterVertically) {
                     if (running) CardAction("Stop", Icons.Default.Stop, colors.error, onClick = ChatEngine::stop)
                     if (showSteps != null) CardAction("Steps", Icons.Outlined.Timeline, colors.primary, onClick = showSteps)
                     if (message.detail != null) {
