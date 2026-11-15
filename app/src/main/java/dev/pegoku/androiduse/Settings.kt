@@ -50,6 +50,11 @@ class Settings(context: Context) {
         get() = prefs.getString("report_chat", "Notes") ?: "Notes"
         set(value) = prefs.edit().putString("report_chat", value.trim()).apply()
 
+    /** Follow the wallpaper's dynamic colors instead of the app's own palette. */
+    var wallpaperColors: Boolean
+        get() = prefs.getBoolean("wallpaper_colors", false)
+        set(value) = prefs.edit().putBoolean("wallpaper_colors", value).apply()
+
     companion object {
         const val DEFAULT_MODEL = "gpt-6.1-sol"
         const val DEFAULT_FAST_MODEL = "gpt-6.1-terra"

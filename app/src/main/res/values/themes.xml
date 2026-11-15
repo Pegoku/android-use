@@ -1,6 +1,7 @@
 <resources>
     <style name="Theme.AndroidUse" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowBackground">@color/page</item>
     </style>
     <style name="Theme.AndroidUse.Assistant" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowIsTranslucent">true</item>

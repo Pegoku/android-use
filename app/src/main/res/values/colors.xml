@@ -1,0 +1,4 @@
+<resources>
+    <!-- The page color, shown by the window before the first frame is drawn. -->
+    <color name="page">#F5F6FB</color>
+</resources>
