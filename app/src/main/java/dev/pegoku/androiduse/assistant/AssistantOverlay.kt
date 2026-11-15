@@ -96,7 +96,13 @@ fun AssistantOverlay(
         Box(
             Modifier
                 .fillMaxSize()
-                .background(Brush.verticalGradient(0.35f to Color.Transparent, 1f to Color.Black.copy(alpha = if (dark) 0.6f else 0.35f)))
+                // A chat can reach the top of the screen, so then the whole app behind it is dimmed, not just the bottom.
+                .background(
+                    Brush.verticalGradient(
+                        (if (messages.isEmpty()) 0.35f else 0f) to Color.Black.copy(alpha = if (messages.isEmpty()) 0f else if (dark) 0.5f else 0.3f),
+                        1f to Color.Black.copy(alpha = if (dark) 0.6f else 0.35f),
+                    ),
+                )
                 .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onDismiss),
         ) {
             AnimatedVisibility(
