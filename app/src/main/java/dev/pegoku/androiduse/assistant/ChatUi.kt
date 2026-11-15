@@ -4,7 +4,6 @@ import android.text.format.DateUtils
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -12,13 +11,18 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -34,9 +38,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.outlined.VolumeUp
-import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Stop
@@ -45,13 +48,14 @@ import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.PictureAsPdf
-import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.Timeline
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -59,6 +63,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
@@ -75,7 +80,8 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -88,7 +94,6 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -100,39 +105,50 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.pegoku.androiduse.agent.LiveNotification
 import dev.pegoku.androiduse.agent.QuestionRequest
 import dev.pegoku.androiduse.agent.TaskRunner
+import dev.pegoku.androiduse.ui.Eyebrow
+import dev.pegoku.androiduse.ui.Mono
+import dev.pegoku.androiduse.ui.TouchMark
+import dev.pegoku.androiduse.ui.card
+import dev.pegoku.androiduse.ui.hairline
+import dev.pegoku.androiduse.ui.isDark
 import dev.pegoku.androiduse.ui.success
 
 /*
  * The conversation pieces shared by the app's chat screen and the assistant overlay: messages,
- * task rows, follow-up chips, the question card and the input bar.
+ * task cards, follow-up chips, the question card and the composer.
  */
 
-/** The messages of a chat, with thinking dots while a reply is on its way and copy/read-aloud under the last one. */
+/**
+ * The messages of a chat, with the thinking mark while a reply is on its way and copy/read-aloud
+ * under the last one. [onShowSteps] adds a "Steps" button to the newest task's card.
+ */
 internal fun LazyListScope.chatItems(
     messages: List<ChatMessage>,
     busy: Boolean,
     onCopy: (String) -> Unit,
     onSpeak: (String) -> Unit,
+    onShowSteps: (() -> Unit)? = null,
 ) {
+    val latestTask = messages.lastOrNull { it.role == ChatRole.Task }?.id
     items(messages, key = { it.id }) { message ->
         when (message.role) {
             ChatRole.User -> UserMessage(message)
             ChatRole.Assistant -> AssistantMessage(message)
-            ChatRole.Task -> TaskRow(message)
+            ChatRole.Task -> TaskRow(message, latest = message.id == latestTask, onShowSteps = onShowSteps)
         }
     }
     item {
         val last = messages.lastOrNull()
         val run by TaskRunner.state.collectAsStateWithLifecycle()
         when {
-            // While a task runs its row shows the progress (and messages sent then steer it). Otherwise
+            // While a task runs its card shows the progress (and messages sent then steer it). Otherwise
             // the model is working until its reply starts to show: before the first words, during a
             // web search, or when it picks up after a task.
             busy && !run.running && !(last?.role == ChatRole.Assistant && last.streaming && last.text.isNotEmpty()) -> Thinking()
-            !busy && last?.role == ChatRole.Assistant -> Row(verticalAlignment = Alignment.CenterVertically) {
+            !busy && last?.role == ChatRole.Assistant -> Row(Modifier.offset(x = (-10).dp), verticalAlignment = Alignment.CenterVertically) {
                 val muted = MaterialTheme.colorScheme.onSurfaceVariant
-                IconButton(onClick = { onCopy(last.text) }) { Icon(Icons.Outlined.ContentCopy, "Copy", tint = muted, modifier = Modifier.size(20.dp)) }
-                IconButton(onClick = { onSpeak(last.text) }) { Icon(Icons.AutoMirrored.Outlined.VolumeUp, "Read aloud", tint = muted, modifier = Modifier.size(20.dp)) }
+                IconButton(onClick = { onCopy(last.text) }, modifier = Modifier.size(40.dp)) { Icon(Icons.Outlined.ContentCopy, "Copy", tint = muted, modifier = Modifier.size(18.dp)) }
+                IconButton(onClick = { onSpeak(last.text) }, modifier = Modifier.size(40.dp)) { Icon(Icons.AutoMirrored.Outlined.VolumeUp, "Read aloud", tint = muted, modifier = Modifier.size(18.dp)) }
             }
         }
     }
@@ -142,16 +158,16 @@ internal fun LazyListScope.chatItems(
 internal fun AssistantMessage(message: ChatMessage) {
     val base = markdown(message.text)
     val text = if (message.streaming) {
-        // A softly pulsing cursor while the reply streams in.
+        // A softly pulsing touch dot where the next words will land.
         val cursor by rememberInfiniteTransition(label = "cursor").animateFloat(
-            initialValue = 1f, targetValue = 0.2f,
+            initialValue = 1f, targetValue = 0.25f,
             animationSpec = infiniteRepeatable(tween(550), RepeatMode.Reverse),
             label = "cursor",
         )
-        val color = MaterialTheme.colorScheme.primary.copy(alpha = cursor)
+        val color = MaterialTheme.colorScheme.tertiary.copy(alpha = cursor)
         buildAnnotatedString {
             append(base)
-            withStyle(SpanStyle(color = color)) { append(" ▍") }
+            withStyle(SpanStyle(color = color)) { append(" ●") }
         }
     } else {
         base
@@ -159,44 +175,29 @@ internal fun AssistantMessage(message: ChatMessage) {
     Text(
         text,
         inlineContent = swatches(base),
-        style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp, lineHeight = 25.sp),
+        style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 25.sp),
         color = MaterialTheme.colorScheme.onSurface,
     )
 }
 
-/** Shown while the model works on a reply: a turning, breathing sparkle and a shimmering label. */
+/** Shown while the model works on a reply: the touch mark rippling and a shimmering label. */
 @Composable
 internal fun Thinking() {
     val colors = MaterialTheme.colorScheme
-    val transition = rememberInfiniteTransition(label = "thinking")
-    val turn by transition.animateFloat(
-        initialValue = 0f, targetValue = 360f,
-        animationSpec = infiniteRepeatable(tween(2_400, easing = LinearEasing)),
-        label = "turn",
-    )
-    val breath by transition.animateFloat(
-        initialValue = 0.8f, targetValue = 1.1f,
-        animationSpec = infiniteRepeatable(tween(700, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "breath",
-    )
-    val sweep by transition.animateFloat(
+    val sweep by rememberInfiniteTransition(label = "thinking").animateFloat(
         initialValue = -150f, targetValue = 450f,
         animationSpec = infiniteRepeatable(tween(1_400, easing = LinearEasing)),
         label = "sweep",
     )
     Row(Modifier.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(
-            Icons.Default.AutoAwesome, null, tint = colors.primary,
-            modifier = Modifier.size(22.dp).graphicsLayer { rotationZ = turn; scaleX = breath; scaleY = breath },
-        )
+        TouchMark(size = 22.dp, active = true)
         Spacer(Modifier.width(10.dp))
         Text(
             "Thinking",
             style = MaterialTheme.typography.bodyLarge.copy(
-                fontSize = 17.sp,
                 // A highlight that sweeps across the label; past its edges the text keeps the muted color.
                 brush = Brush.linearGradient(
-                    listOf(colors.onSurfaceVariant, colors.primary, colors.onSurfaceVariant),
+                    listOf(colors.onSurfaceVariant, colors.onSurface, colors.onSurfaceVariant),
                     start = Offset(sweep - 100f, 0f),
                     end = Offset(sweep + 100f, 0f),
                 ),
@@ -213,7 +214,7 @@ internal fun UserMessage(message: ChatMessage) {
             Image(
                 it.asImageBitmap(), "Shared screen",
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.padding(bottom = 6.dp).size(width = 54.dp, height = 96.dp).clip(RoundedCornerShape(10.dp)),
+                modifier = Modifier.padding(bottom = 6.dp).size(width = 54.dp, height = 96.dp).clip(RoundedCornerShape(8.dp)),
             )
         }
         if (message.attachments.isNotEmpty()) {
@@ -233,7 +234,7 @@ internal fun UserMessage(message: ChatMessage) {
                 color = colors.onPrimaryContainer,
                 modifier = Modifier
                     .widthIn(max = 300.dp)
-                    .clip(RoundedCornerShape(20.dp, 6.dp, 20.dp, 20.dp))
+                    .clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomEnd = 4.dp, bottomStart = 18.dp))
                     .background(colors.primaryContainer)
                     .padding(horizontal = 14.dp, vertical = 10.dp),
             )
@@ -242,68 +243,109 @@ internal fun UserMessage(message: ChatMessage) {
 }
 
 /**
- * A task in the conversation. While it runs: a spinner, the current step and a stop button.
- * Afterwards: the outcome; tap to read what the agent reported.
+ * A task in the conversation. While it runs: the rippling touch mark, the step it is on, the
+ * phone's screen as the agent sees it, and a stop button. Afterwards: the outcome and the screen
+ * it left the phone on; tap to read what the agent reported.
+ *
+ * [latest] marks the newest task of the chat, the only one the live run state can describe.
  */
 @Composable
-internal fun TaskRow(message: ChatMessage) {
+internal fun TaskRow(message: ChatMessage, latest: Boolean = false, onShowSteps: (() -> Unit)? = null) {
     val colors = MaterialTheme.colorScheme
     var expanded by remember { mutableStateOf(false) }
     val running = message.success == null
     val run by TaskRunner.state.collectAsStateWithLifecycle()
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(colors.surfaceContainerHighest)
-            .clickable(enabled = message.detail != null) { expanded = !expanded }
-            .padding(start = 14.dp, end = 6.dp, top = 12.dp, bottom = 12.dp)
-            .animateContentSize(),
+    // The run state belongs to this card only if it is the chat's newest task and the same task.
+    val mine = latest && run.task == message.text
+    val live = running && run.running
+    val screen = run.screen.takeIf { mine }
+    val steps = run.steps.takeIf { mine && it > 0 }
+    val accent = when (message.success) { null -> colors.tertiary; true -> colors.success; false -> colors.error }
+    Surface(
+        shape = MaterialTheme.shapes.large,
+        color = colors.card,
+        border = hairline(),
+        modifier = Modifier.fillMaxWidth(),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            when (message.success) {
-                null -> CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.5.dp, color = colors.primary)
-                true -> Icon(Icons.Outlined.CheckCircle, null, tint = colors.success, modifier = Modifier.size(22.dp))
-                false -> Icon(Icons.Outlined.ErrorOutline, null, tint = colors.error, modifier = Modifier.size(22.dp))
+        Column(
+            Modifier
+                .clickable(enabled = message.detail != null) { expanded = !expanded }
+                .padding(14.dp)
+                .animateContentSize(),
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        when (message.success) {
+                            null -> TouchMark(size = 18.dp, active = live)
+                            true -> Icon(Icons.Outlined.CheckCircle, null, tint = accent, modifier = Modifier.size(18.dp))
+                            false -> Icon(Icons.Outlined.ErrorOutline, null, tint = accent, modifier = Modifier.size(18.dp))
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Eyebrow(
+                            buildString {
+                                append(when (message.success) { null -> "Working"; true -> "Done"; false -> "Couldn't finish" })
+                                if (steps != null) append(if (running) " · step $steps" else if (steps == 1) " · 1 step" else " · $steps steps")
+                            },
+                            color = accent,
+                        )
+                    }
+                    Text(
+                        message.text,
+                        style = MaterialTheme.typography.bodyLarge, color = colors.onSurface,
+                        maxLines = if (expanded) Int.MAX_VALUE else 3, overflow = TextOverflow.Ellipsis,
+                    )
+                    if (live) {
+                        // What the agent is doing right now.
+                        Text(
+                            run.lastAction?.let(LiveNotification::describe) ?: run.phase.ifBlank { "Starting" },
+                            style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        )
+                        LinearProgressIndicator(
+                            Modifier.padding(top = 2.dp).fillMaxWidth().height(3.dp).clip(CircleShape),
+                            color = colors.tertiary, trackColor = colors.tertiary.copy(alpha = 0.16f),
+                        )
+                    }
+                }
+                if (screen != null) {
+                    Image(
+                        screen.asImageBitmap(), if (running) "The phone's screen" else "Where the task left the phone",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .width(52.dp)
+                            .aspectRatio((screen.width / screen.height.toFloat()).coerceIn(0.4f, 1f))
+                            .clip(RoundedCornerShape(8.dp))
+                            .border(1.dp, colors.outlineVariant, RoundedCornerShape(8.dp)),
+                    )
+                }
             }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    when (message.success) { null -> "Working on your phone"; true -> "Done on your phone"; false -> "Couldn't finish" },
-                    style = MaterialTheme.typography.titleSmall, color = colors.onSurface,
-                )
-                Text(message.text, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant, maxLines = if (expanded) Int.MAX_VALUE else 3)
+            if (expanded && message.detail != null) {
+                Text(message.detail, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant, modifier = Modifier.padding(top = 10.dp))
             }
-            when {
-                running -> IconButton(onClick = ChatEngine::stop) { Icon(Icons.Default.Stop, "Stop", tint = colors.onSurface) }
-                message.detail != null -> Icon(
-                    if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, if (expanded) "Hide details" else "Show details",
-                    tint = colors.onSurfaceVariant, modifier = Modifier.padding(8.dp),
-                )
-                else -> Spacer(Modifier.width(8.dp))
+            val showSteps = onShowSteps.takeIf { mine && run.log.isNotEmpty() }
+            if (running || showSteps != null || message.detail != null) {
+                Row(Modifier.padding(top = 6.dp).offset(x = (-10).dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (running) CardAction("Stop", Icons.Default.Stop, colors.error, onClick = ChatEngine::stop)
+                    if (showSteps != null) CardAction("Steps", Icons.Outlined.Timeline, colors.primary, onClick = showSteps)
+                    if (message.detail != null) {
+                        CardAction(
+                            if (expanded) "Hide report" else "Report",
+                            if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                            colors.primary,
+                        ) { expanded = !expanded }
+                    }
+                }
             }
         }
-        if (running && run.running) {
-            // Live progress: what the agent is doing right now and how far it is.
-            Column(Modifier.padding(start = 34.dp, end = 8.dp, top = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                LinearProgressIndicator(Modifier.fillMaxWidth().height(4.dp).clip(CircleShape), color = colors.primary, trackColor = colors.surfaceContainer)
-                Text(
-                    buildString {
-                        append(run.lastAction?.let(LiveNotification::describe) ?: run.phase.ifBlank { "Starting" })
-                        if (run.steps > 0) append(" · step ${run.steps}")
-                    },
-                    style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-        if (expanded && message.detail != null) {
-            Text(
-                message.detail,
-                style = MaterialTheme.typography.bodyMedium,
-                color = colors.onSurface,
-                modifier = Modifier.padding(start = 34.dp, end = 8.dp, top = 10.dp),
-            )
-        }
+    }
+}
+
+@Composable
+private fun CardAction(label: String, icon: ImageVector, tint: Color, onClick: () -> Unit) {
+    TextButton(onClick = onClick, contentPadding = PaddingValues(horizontal = 10.dp), colors = ButtonDefaults.textButtonColors(contentColor = tint)) {
+        Icon(icon, null, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(label, style = MaterialTheme.typography.labelLarge)
     }
 }
 
@@ -332,33 +374,37 @@ internal fun FollowUps(messages: List<ChatMessage>, onSend: (String) -> Unit) {
 
 @Composable
 internal fun Suggestion(text: String, onClick: () -> Unit) {
-    Surface(onClick = onClick, shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.surfaceContainerHighest) {
+    Surface(onClick = onClick, shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.card, border = hairline()) {
         Text(
             text,
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 11.dp),
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
         )
     }
 }
 
 /** A question the running task is waiting on, with its quick options. */
 @Composable
-internal fun QuestionCard(question: QuestionRequest, shape: RoundedCornerShape, onAnswer: (String) -> Unit) {
+internal fun QuestionCard(question: QuestionRequest, shape: Shape, onAnswer: (String) -> Unit) {
     val colors = MaterialTheme.colorScheme
     Surface(shape = shape, color = colors.tertiaryContainer, modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("The task needs your answer", style = MaterialTheme.typography.labelLarge, color = colors.onTertiaryContainer.copy(alpha = 0.75f))
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TouchMark(size = 18.dp, color = colors.onTertiaryContainer, active = true)
+                Spacer(Modifier.width(8.dp))
+                Eyebrow("The task needs your answer", color = colors.onTertiaryContainer)
+            }
             Text(question.question, style = MaterialTheme.typography.bodyLarge, color = colors.onTertiaryContainer)
             if (question.options.isNotEmpty()) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
                     question.options.forEach { option ->
-                        Surface(shape = RoundedCornerShape(50), color = colors.surface, onClick = { onAnswer(option) }) {
+                        Surface(shape = MaterialTheme.shapes.small, color = colors.surface, onClick = { onAnswer(option) }) {
                             Text(
                                 option,
-                                style = MaterialTheme.typography.bodyMedium,
+                                style = MaterialTheme.typography.labelLarge,
                                 color = colors.onSurface,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                             )
                         }
                     }
@@ -375,28 +421,29 @@ internal fun RecentChatRow(chat: SavedChat, selected: Boolean = false, onOpen: (
     Row(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(50))
+            .clip(MaterialTheme.shapes.small)
             .background(if (selected) colors.secondaryContainer else Color.Transparent)
             .clickable(onClick = onOpen)
-            .padding(start = 16.dp, top = 2.dp, bottom = 2.dp, end = 2.dp),
+            .padding(start = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Outlined.ChatBubbleOutline, null, tint = colors.onSurfaceVariant, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
-            Text(chat.title, style = MaterialTheme.typography.bodyLarge, color = colors.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                chat.title, style = MaterialTheme.typography.bodyLarge,
+                color = if (selected) colors.onSecondaryContainer else colors.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
             Text(
                 DateUtils.getRelativeTimeSpanString(chat.updatedAt, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS).toString(),
                 style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant,
             )
         }
         IconButton(onClick = onDelete) {
-            Icon(Icons.Outlined.Delete, "Delete chat", tint = colors.onSurfaceVariant, modifier = Modifier.size(18.dp))
+            Icon(Icons.Outlined.Delete, "Delete chat", tint = colors.onSurfaceVariant.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
         }
     }
 }
 
-/** The pill-shaped composer: attach files or the screen, text, mic or send. */
+/** The composer: attach files or the screen, text, mic or send. */
 @Composable
 internal fun InputBar(
     text: String,
@@ -441,14 +488,17 @@ internal fun InputBar(
         }
     }
     Surface(
-        shape = RoundedCornerShape(32.dp),
-        color = colors.surfaceContainerHigh,
+        shape = MaterialTheme.shapes.extraLarge,
+        color = colors.card,
+        // Pink while the composer talks to a running task, so it is clear who is listening.
+        border = if (steering || answering) BorderStroke(1.5.dp, colors.tertiary.copy(alpha = 0.7f)) else hairline(),
+        shadowElevation = if (colors.isDark) 0.dp else 2.dp,
         modifier = modifier.fillMaxWidth(),
     ) {
         Column {
             if (canAttach && (attached || attachments!!.loading > 0)) {
                 Row(
-                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 14.dp, end = 14.dp, top = 12.dp),
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 12.dp, end = 12.dp, top = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -464,9 +514,9 @@ internal fun InputBar(
                     if (attachments.loading > 0) CircularProgressIndicator(Modifier.padding(8.dp).size(22.dp), strokeWidth = 2.5.dp)
                 }
             }
-            Row(Modifier.padding(horizontal = 6.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.padding(horizontal = 4.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (canAttach) {
-                    IconButton(onClick = { picker.launch(arrayOf("*/*")) }) { Icon(Icons.Outlined.AttachFile, "Attach files", tint = colors.onSurface) }
+                    IconButton(onClick = { picker.launch(arrayOf("*/*")) }) { Icon(Icons.Outlined.AttachFile, "Attach files", tint = colors.onSurfaceVariant) }
                 }
                 if (screen != null) {
                     // Attached screen: thumbnail with a tap-to-remove affordance.
@@ -482,9 +532,9 @@ internal fun InputBar(
                         )
                     }
                 } else if (canShare) {
-                    IconButton(onClick = onToggleScreen) { Icon(Icons.Outlined.AddAPhoto, "Attach screen", tint = colors.onSurface) }
+                    IconButton(onClick = onToggleScreen) { Icon(Icons.Outlined.AddAPhoto, "Attach screen", tint = colors.onSurfaceVariant) }
                 } else if (!canAttach) {
-                    Spacer(Modifier.width(12.dp))
+                    Spacer(Modifier.width(8.dp))
                 }
                 TextField(
                     value = if (listening && partialSpeech.isNotEmpty()) partialSpeech else text,
@@ -501,10 +551,10 @@ internal fun InputBar(
                                 afterTask -> "Follow up or give feedback"
                                 else -> placeholder
                             },
-                            fontSize = 17.sp, color = colors.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodyLarge, color = colors.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         )
                     },
-                    textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp, color = colors.onSurface),
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = colors.onSurface),
                     colors = TextFieldDefaults.colors(
                         focusedContainerColor = Color.Transparent,
                         unfocusedContainerColor = Color.Transparent,
@@ -527,22 +577,21 @@ internal fun InputBar(
                 if ((text.isNotBlank() || attached) && !listening) {
                     Surface(onClick = ::submit, enabled = !blocked, shape = CircleShape, color = if (blocked) colors.surfaceContainerHighest else colors.primary) {
                         Icon(
-                            Icons.AutoMirrored.Filled.Send, "Send",
+                            Icons.Default.ArrowUpward, "Send",
                             tint = if (blocked) colors.onSurfaceVariant else colors.onPrimary,
-                            modifier = Modifier.padding(10.dp).size(20.dp),
+                            modifier = Modifier.padding(9.dp).size(22.dp),
                         )
                     }
-                    Spacer(Modifier.width(2.dp))
                 } else {
-                    Surface(onClick = onMic, shape = CircleShape, color = if (listening) colors.errorContainer else Color.Transparent) {
+                    Surface(onClick = onMic, shape = CircleShape, color = if (listening) colors.tertiary else Color.Transparent) {
                         Icon(
-                            Icons.Default.Mic, "Speak",
-                            tint = if (listening) colors.onErrorContainer else colors.onSurface,
-                            modifier = Modifier.padding(10.dp).size(22.dp),
+                            Icons.Default.Mic, if (listening) "Stop listening" else "Speak",
+                            tint = if (listening) colors.onTertiary else colors.onSurfaceVariant,
+                            modifier = Modifier.padding(9.dp).size(22.dp),
                         )
                     }
-                    Spacer(Modifier.width(2.dp))
                 }
+                Spacer(Modifier.width(4.dp))
             }
         }
     }
@@ -557,7 +606,7 @@ internal fun AttachmentChip(attachment: Attachment, height: androidx.compose.ui.
         Image(
             thumbnail.asImageBitmap(), attachment.name,
             contentScale = ContentScale.Crop,
-            modifier = Modifier.size(height).clip(RoundedCornerShape(12.dp)),
+            modifier = Modifier.size(height).clip(RoundedCornerShape(10.dp)),
         )
         return
     }
@@ -565,8 +614,8 @@ internal fun AttachmentChip(attachment: Attachment, height: androidx.compose.ui.
         Modifier
             .height(height.coerceAtMost(56.dp))
             .widthIn(max = 200.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(colors.surfaceContainerHighest)
+            .clip(RoundedCornerShape(10.dp))
+            .background(colors.surfaceContainerHigh)
             .padding(start = 6.dp, end = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -607,7 +656,7 @@ internal fun markdown(text: String): AnnotatedString = buildAnnotatedString {
         val (bold, code, italic) = match.destructured
         when {
             bold.isNotEmpty() -> withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { appendWithSwatches(bold) }
-            code.isNotEmpty() -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 15.sp)) { appendWithSwatches(code) }
+            code.isNotEmpty() -> withStyle(SpanStyle(fontFamily = Mono, fontSize = 14.sp)) { appendWithSwatches(code) }
             else -> withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { appendWithSwatches(italic) }
         }
         index = match.range.last + 1

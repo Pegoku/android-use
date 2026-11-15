@@ -32,7 +32,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.OpenInFull
 import androidx.compose.material.icons.outlined.Refresh
@@ -61,10 +60,15 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.pegoku.androiduse.agent.Questions
 import dev.pegoku.androiduse.agent.TaskRunner
 import dev.pegoku.androiduse.ui.AndroidUseTheme
+import dev.pegoku.androiduse.ui.Eyebrow
+import dev.pegoku.androiduse.ui.TouchMark
+import dev.pegoku.androiduse.ui.Wordmark
+import dev.pegoku.androiduse.ui.card
+import dev.pegoku.androiduse.ui.hairline
 
 /**
- * The assistant sheet that floats over the current app. It follows the system theme and the
- * wallpaper colors, so it looks like part of the phone rather than a second app.
+ * The assistant sheet that floats over the current app. It follows the system theme and wears
+ * the same colors as the app (or the wallpaper's, if that is turned on in Settings).
  */
 @Composable
 fun AssistantOverlay(
@@ -154,7 +158,7 @@ fun AssistantOverlay(
     }
 }
 
-private val SheetShape = RoundedCornerShape(28.dp)
+private val SheetShape = RoundedCornerShape(22.dp)
 
 /** Keeps taps inside a sheet from falling through to the scrim and closing the overlay. */
 private fun Modifier.swallowTaps(): Modifier = pointerInput(Unit) { detectTapGestures {} }
@@ -174,18 +178,14 @@ private fun Header(onDismiss: () -> Unit, onOpenApp: () -> Unit) {
 
 @Composable
 private fun Brand() {
-    Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-        Row(Modifier.padding(start = 10.dp, end = 14.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("Android Use", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
-        }
+    Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.card, border = hairline()) {
+        Wordmark(Modifier.padding(start = 10.dp, end = 14.dp, top = 6.dp, bottom = 6.dp))
     }
 }
 
 @Composable
 private fun SmallAction(icon: ImageVector, label: String, onClick: () -> Unit) {
-    Surface(onClick = onClick, shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+    Surface(onClick = onClick, shape = CircleShape, color = MaterialTheme.colorScheme.card, border = hairline()) {
         Icon(icon, label, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(9.dp).size(20.dp))
     }
 }
@@ -199,14 +199,14 @@ private fun Welcome(
     onSuggestion: (String, Boolean) -> Unit,
 ) {
     val chats by ChatStore.chats.collectAsStateWithLifecycle()
-    Surface(shape = SheetShape, color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth().swallowTaps()) {
-        Column(Modifier.padding(top = 14.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Row(Modifier.padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+    Surface(shape = SheetShape, color = MaterialTheme.colorScheme.background, border = hairline(), modifier = Modifier.fillMaxWidth().swallowTaps()) {
+        Column(Modifier.padding(top = 16.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                TouchMark(size = 22.dp)
                 Spacer(Modifier.width(10.dp))
                 Text(
-                    "Ask anything, or say what to do on your phone.",
-                    style = MaterialTheme.typography.titleMedium,
+                    "What should I do on your phone?",
+                    style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
             }
@@ -223,12 +223,9 @@ private fun Welcome(
                 Suggestion("Turn on do not disturb") { onSuggestion("Turn on do not disturb", false) }
             }
             if (chats.isNotEmpty()) {
-                Column(Modifier.padding(horizontal = 8.dp)) {
-                    Text(
-                        "Recent", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 8.dp, bottom = 4.dp),
-                    )
-                    chats.take(4).forEach { chat ->
+                Column(Modifier.padding(horizontal = 4.dp)) {
+                    Eyebrow("Recent", Modifier.padding(start = 12.dp, bottom = 4.dp))
+                    chats.take(3).forEach { chat ->
                         RecentChatRow(chat, onOpen = { ChatEngine.open(chat.id) }, onDelete = { ChatEngine.delete(chat.id) })
                     }
                 }
@@ -241,20 +238,21 @@ private fun Welcome(
 private fun ScreenChip(screen: SharedScreen, selected: Boolean, onToggle: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     Surface(
-        shape = RoundedCornerShape(50),
-        color = if (selected) colors.primaryContainer else colors.surfaceContainerHighest,
+        shape = MaterialTheme.shapes.small,
+        color = if (selected) colors.primaryContainer else colors.card,
+        border = if (selected) null else hairline(),
         onClick = onToggle,
     ) {
-        Row(Modifier.padding(start = 6.dp, end = 16.dp, top = 5.dp, bottom = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(start = 5.dp, end = 14.dp, top = 3.dp, bottom = 3.dp), verticalAlignment = Alignment.CenterVertically) {
             Image(
                 screen.thumbnail.asImageBitmap(), null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.size(width = 22.dp, height = 34.dp).clip(RoundedCornerShape(5.dp)),
+                modifier = Modifier.size(width = 20.dp, height = 32.dp).clip(RoundedCornerShape(5.dp)),
             )
             Spacer(Modifier.width(10.dp))
             Text(
                 if (selected) "Screen attached" else "Attach screen",
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.labelLarge,
                 color = if (selected) colors.onPrimaryContainer else colors.onSurface,
             )
         }
@@ -276,15 +274,16 @@ private fun ChatCard(
     }
     Surface(
         shape = SheetShape,
-        color = MaterialTheme.colorScheme.surfaceContainer,
+        color = MaterialTheme.colorScheme.background,
+        border = hairline(),
         modifier = modifier.fillMaxWidth().swallowTaps(),
     ) {
         LazyColumn(
             state = listState,
-            modifier = Modifier.heightIn(max = maxHeight).padding(horizontal = 18.dp),
+            modifier = Modifier.heightIn(max = maxHeight).padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            item { Spacer(Modifier.height(6.dp)) }
+            item { Spacer(Modifier.height(4.dp)) }
             chatItems(messages, busy, onCopy, onSpeak)
             item { Spacer(Modifier.height(6.dp)) }
         }

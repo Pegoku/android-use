@@ -19,8 +19,22 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import android.text.format.DateUtils
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.outlined.ArrowOutward
+import androidx.compose.material.icons.outlined.DoNotDisturbOn
+import androidx.compose.material.icons.outlined.Sms
+import androidx.compose.material.icons.outlined.Timer
+import androidx.compose.material.icons.outlined.WbSunny
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
+import dev.pegoku.androiduse.agent.RunState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,16 +49,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material.icons.outlined.ListAlt
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.DrawerValue
@@ -55,13 +65,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
-import androidx.compose.material3.NavigationDrawerItem
-import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -73,11 +79,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.pegoku.androiduse.Settings
 import dev.pegoku.androiduse.agent.Approvals
@@ -92,7 +95,6 @@ import dev.pegoku.androiduse.assistant.QuestionCard
 import dev.pegoku.androiduse.assistant.RecentChatRow
 import dev.pegoku.androiduse.assistant.Speaker
 import dev.pegoku.androiduse.assistant.SpeechInput
-import dev.pegoku.androiduse.assistant.Suggestion
 import dev.pegoku.androiduse.assistant.chatItems
 import dev.pegoku.androiduse.auth.CodexAuth
 import dev.pegoku.androiduse.auth.CodexTokens
@@ -258,7 +260,7 @@ private fun ChatScreen(
     ModalNavigationDrawer(
         drawerState = drawer,
         drawerContent = {
-            ModalDrawerSheet(drawerContainerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
+            ModalDrawerSheet(drawerContainerColor = MaterialTheme.colorScheme.background) {
                 Drawer(
                     chats = chats,
                     currentChat = currentChat,
@@ -275,24 +277,24 @@ private fun ChatScreen(
     ) {
         Scaffold(
             topBar = {
-                TopAppBar(
-                    navigationIcon = { IconButton(onClick = { scope.launch { drawer.open() } }) { Icon(Icons.Outlined.Menu, "Chats") } },
-                    title = {
-                        Column {
-                            Text("Android Use", style = MaterialTheme.typography.titleMedium)
-                            Text(
-                                settings.fastModel.takeIf { it.isNotBlank() } ?: settings.model,
-                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    },
-                    actions = {
-                        if (run.log.isNotEmpty()) IconButton(onClick = { showSteps = true }) { Icon(Icons.Outlined.ListAlt, "Task steps") }
-                        IconButton(onClick = ChatEngine::newChat, enabled = messages.isNotEmpty() && !run.running) { Icon(Icons.Outlined.Edit, "New chat") }
-                        Avatar(tokens, onClick = onOpenSettings)
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
-                )
+                Row(
+                    Modifier.fillMaxWidth().statusBarsPadding().height(60.dp).padding(horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(onClick = { scope.launch { drawer.open() } }) { Icon(Icons.Outlined.Menu, "Chats") }
+                    Column(Modifier.weight(1f).padding(start = 4.dp)) {
+                        // The mark ripples for as long as the agent has its finger on the phone.
+                        Wordmark(active = run.running)
+                        Text(
+                            settings.fastModel.takeIf { it.isNotBlank() } ?: settings.model,
+                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(start = 30.dp),
+                        )
+                    }
+                    IconButton(onClick = ChatEngine::newChat, enabled = messages.isNotEmpty() && !run.running) { Icon(Icons.Outlined.Edit, "New chat") }
+                    Avatar(tokens, onClick = onOpenSettings)
+                }
             },
             containerColor = MaterialTheme.colorScheme.background,
             contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0),
@@ -309,7 +311,7 @@ private fun ChatScreen(
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp, vertical = 8.dp),
                             verticalArrangement = Arrangement.spacedBy(16.dp),
                         ) {
-                            chatItems(messages, busy, onCopy, onSpeak)
+                            chatItems(messages, busy, onCopy, onSpeak, onShowSteps = { showSteps = true })
                             item { Spacer(Modifier.height(4.dp)) }
                         }
                     }
@@ -317,7 +319,7 @@ private fun ChatScreen(
                 Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     if (!ready) SetupCard(shizuku, tokens)
                     approval?.let { ApprovalCard(it) }
-                    question?.let { q -> QuestionCard(q, RoundedCornerShape(24.dp)) { Questions.answer(q.id, it) } }
+                    question?.let { q -> QuestionCard(q, MaterialTheme.shapes.large) { Questions.answer(q.id, it) } }
                     if (!busy && question == null) FollowUps(messages, ::send)
                     InputBar(
                         text = text,
@@ -332,7 +334,7 @@ private fun ChatScreen(
                         onToggleScreen = {},
                         onSend = ::send,
                         onMic = onMic,
-                        placeholder = if (ready) "Ask anything, or say what to do" else "Finish setup first",
+                        placeholder = if (ready) "Ask, or say what to do" else "Finish setup first",
                         attachments = attachments,
                     )
                 }
@@ -341,45 +343,85 @@ private fun ChatScreen(
     }
 
     if (showSteps) {
-        ModalBottomSheet(onDismissRequest = { showSteps = false }) {
-            Row(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        ModalBottomSheet(onDismissRequest = { showSteps = false }, containerColor = MaterialTheme.colorScheme.background) {
+            StepLog(run)
+        }
+    }
+}
+
+/** What the agent did on the current task: the phone's last screen, then every step in order. */
+@Composable
+private fun StepLog(run: RunState) {
+    val colors = MaterialTheme.colorScheme
+    val listState = rememberLazyListState()
+    // Opens on the newest step and follows along while the task runs.
+    LaunchedEffect(run.log.size) { if (run.log.isNotEmpty()) listState.scrollToItem(run.log.size) }
+    LazyColumn(state = listState, modifier = Modifier.fillMaxWidth(), contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp)) {
+        item {
+            Row(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 PhoneFrame(run)
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(if (run.running) run.phase.ifBlank { "Starting" } else run.phase, style = MaterialTheme.typography.titleMedium)
-                    run.task?.let { Text(it, style = MaterialTheme.typography.bodyMedium, maxLines = 4, overflow = TextOverflow.Ellipsis) }
-                    Hint(if (run.steps == 1) "1 step" else "${run.steps} steps")
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (run.running) {
+                            TouchMark(size = 18.dp, active = true)
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Eyebrow(
+                            (if (run.running) run.phase.ifBlank { "Starting" } else run.phase) + " · " + (if (run.steps == 1) "1 step" else "${run.steps} steps"),
+                            color = when {
+                                run.running -> colors.tertiary
+                                run.result?.success == true -> colors.success
+                                run.result != null -> colors.error
+                                else -> colors.onSurfaceVariant
+                            },
+                        )
+                    }
+                    run.task?.let { Text(it, style = MaterialTheme.typography.titleMedium, maxLines = 5, overflow = TextOverflow.Ellipsis) }
                 }
             }
-            LazyColumn(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
-                items(run.log) { line -> LogRow(line) }
-            }
         }
+        items(run.log) { line -> LogRow(line) }
     }
 }
 
-/** The empty chat: a greeting and a few starters, like the first screen of Gemini. */
+/** The empty chat: the question the app exists to ask, and a few things to say back. */
 @Composable
 private fun Greeting(tokens: CodexTokens?, onSuggestion: (String) -> Unit) {
+    val colors = MaterialTheme.colorScheme
     val name = tokens?.email?.substringBefore('@')?.substringBefore('.')?.replaceFirstChar(Char::uppercase)
-    Column(Modifier.fillMaxSize().padding(horizontal = 24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-        Icon(Icons.Default.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(40.dp))
-        Spacer(Modifier.height(20.dp))
-        Text(
-            if (name != null) "Hi, $name.\nWhat's the plan?" else "Hi.\nWhat's the plan?",
-            style = MaterialTheme.typography.headlineMedium.copy(fontSize = 30.sp, lineHeight = 38.sp, fontWeight = FontWeight.Normal),
-            textAlign = TextAlign.Center,
-        )
-        Spacer(Modifier.height(32.dp))
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Suggestion("Set a timer for 10 minutes") { onSuggestion("Set a timer for 10 minutes") }
-            Suggestion("What's the weather today?") { onSuggestion("What's the weather today?") }
-            Suggestion("Turn on do not disturb") { onSuggestion("Turn on do not disturb") }
-            Suggestion("Text Anna I'm running late") { onSuggestion("Text Anna I'm running late") }
+    // Sits just above the composer, within thumb reach, and scrolls when the keyboard leaves little room.
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomStart) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 8.dp)) {
+            Text(if (name != null) "Hi $name." else "Hi.", style = MaterialTheme.typography.displaySmall, color = colors.onSurfaceVariant)
+            Text("What should I do\non your phone?", style = MaterialTheme.typography.displaySmall, color = colors.onSurface)
+            Spacer(Modifier.height(28.dp))
+            Starter(Icons.Outlined.Timer, "Set a timer for 10 minutes", onSuggestion)
+            HorizontalDivider(color = colors.hairline)
+            Starter(Icons.Outlined.DoNotDisturbOn, "Turn on do not disturb", onSuggestion)
+            HorizontalDivider(color = colors.hairline)
+            Starter(Icons.Outlined.Sms, "Text Anna I'm running late", onSuggestion)
+            HorizontalDivider(color = colors.hairline)
+            Starter(Icons.Outlined.WbSunny, "What's the weather today?", onSuggestion)
         }
     }
 }
 
-/** The side drawer: new chat, recent chats, and the account row with settings. */
+/** One thing to try, sent as typed when tapped. */
+@Composable
+private fun Starter(icon: ImageVector, text: String, onPick: (String) -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    Row(
+        Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).clickable { onPick(text) }.heightIn(min = 54.dp).padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, null, tint = colors.primary, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(16.dp))
+        Text(text, style = MaterialTheme.typography.bodyLarge, color = colors.onSurface, modifier = Modifier.weight(1f))
+        Icon(Icons.Outlined.ArrowOutward, null, tint = colors.onSurfaceVariant.copy(alpha = 0.6f), modifier = Modifier.size(18.dp))
+    }
+}
+
+/** The side drawer: new chat, the saved chats by day, and the account row with settings. */
 @Composable
 private fun Drawer(
     chats: List<dev.pegoku.androiduse.assistant.SavedChat>,
@@ -394,51 +436,63 @@ private fun Drawer(
 ) {
     val colors = MaterialTheme.colorScheme
     Column(Modifier.fillMaxSize().navigationBarsPadding()) {
-        Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 8.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("Android Use", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+        Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Wordmark(Modifier.weight(1f))
             IconButton(onClick = onClose) { Icon(Icons.Outlined.Close, "Close") }
         }
-        Spacer(Modifier.height(8.dp))
-        NavigationDrawerItem(
-            label = { Text("New chat") },
-            icon = { Icon(Icons.Outlined.Edit, null) },
-            selected = chatEmpty,
+        Surface(
             onClick = onNewChat,
-            modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
-        )
+            shape = MaterialTheme.shapes.medium,
+            color = colors.primary,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+        ) {
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.Edit, null, tint = colors.onPrimary, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(12.dp))
+                Text("New chat", style = MaterialTheme.typography.titleSmall, color = colors.onPrimary)
+            }
+        }
         LazyColumn(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-            if (chats.isNotEmpty()) {
+            if (chats.isEmpty()) {
                 item {
                     Text(
-                        "Recent", style = MaterialTheme.typography.labelLarge, color = colors.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 16.dp, top = 20.dp, bottom = 6.dp),
-                    )
-                }
-                items(chats, key = { it.id }) { chat ->
-                    RecentChatRow(chat, selected = chat.id == currentChat && !chatEmpty, onOpen = { onOpenChat(chat.id) }, onDelete = { onDeleteChat(chat.id) })
-                }
-            } else {
-                item {
-                    Text(
-                        "Your chats will show up here.", style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 16.dp, top = 20.dp),
+                        "Chats you start are kept here, so you can pick one up later.",
+                        style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
                     )
                 }
             }
+            // Newest first, so the day groups come out in order: today, yesterday, earlier.
+            chats.groupBy { dayOf(it.updatedAt) }.forEach { (day, group) ->
+                item(key = day) { Eyebrow(day, Modifier.padding(start = 12.dp, top = 16.dp, bottom = 6.dp)) }
+                items(group, key = { it.id }) { chat ->
+                    RecentChatRow(chat, selected = chat.id == currentChat && !chatEmpty, onOpen = { onOpenChat(chat.id) }, onDelete = { onDeleteChat(chat.id) })
+                }
+            }
         }
+        HorizontalDivider(color = colors.hairline)
         Row(
-            Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+            Modifier.fillMaxWidth().clickable(onClick = onSettings).padding(start = 12.dp, end = 20.dp, top = 6.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Avatar(tokens, onClick = onSettings)
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(6.dp))
             Column(Modifier.weight(1f)) {
-                Text(tokens?.email ?: "Not signed in", style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                tokens?.plan?.let { Text("${it.replaceFirstChar(Char::uppercase)} plan", style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant) }
+                Text(tokens?.email ?: "Not signed in", style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    tokens?.plan?.let { "${it.replaceFirstChar(Char::uppercase)} plan" } ?: "Settings",
+                    style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant,
+                )
             }
-            IconButton(onClick = onSettings) { Icon(Icons.Outlined.Settings, "Settings") }
+            Icon(Icons.Outlined.Settings, "Settings", tint = colors.onSurfaceVariant, modifier = Modifier.size(20.dp))
         }
     }
+}
+
+private fun dayOf(time: Long): String = when {
+    DateUtils.isToday(time) -> "Today"
+    DateUtils.isToday(time + DateUtils.DAY_IN_MILLIS) -> "Yesterday"
+    else -> "Earlier"
 }
 
 /** A round initial from the signed-in email, as the account button. */
@@ -447,8 +501,11 @@ private fun Avatar(tokens: CodexTokens?, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     val initial = tokens?.email?.firstOrNull()?.uppercaseChar()?.toString() ?: "?"
     IconButton(onClick = onClick) {
-        Box(Modifier.size(32.dp).background(if (tokens != null) colors.primary else colors.surfaceContainerHighest, CircleShape), contentAlignment = Alignment.Center) {
-            Text(initial, style = MaterialTheme.typography.titleSmall, color = if (tokens != null) colors.onPrimary else colors.onSurface)
+        Box(
+            Modifier.size(32.dp).background(if (tokens != null) colors.primaryContainer else colors.surfaceContainerHighest, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(initial, style = MaterialTheme.typography.titleSmall, color = if (tokens != null) colors.onPrimaryContainer else colors.onSurfaceVariant)
         }
     }
 }

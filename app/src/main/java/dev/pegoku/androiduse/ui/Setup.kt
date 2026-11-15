@@ -10,7 +10,15 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import dev.pegoku.androiduse.agent.LiveNotification
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -27,17 +35,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowRightAlt
-import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Circle
-import androidx.compose.material.icons.outlined.ErrorOutline
-import androidx.compose.material.icons.outlined.Lightbulb
-import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.TouchApp
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -60,9 +60,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -90,77 +88,84 @@ import kotlinx.coroutines.launch
  */
 
 @Composable
-internal fun CardTitle(text: String, icon: ImageVector? = null, trailing: (@Composable () -> Unit)? = null) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        if (icon != null) {
-            Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(10.dp))
-        }
-        Text(text, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-        trailing?.invoke()
-    }
-}
-
-@Composable
-internal fun Hint(text: String, color: Color = MaterialTheme.colorScheme.onSurfaceVariant) {
-    Text(text, style = MaterialTheme.typography.bodySmall, color = color)
+internal fun Hint(text: String, modifier: Modifier = Modifier, color: Color = MaterialTheme.colorScheme.onSurfaceVariant) {
+    Text(text, style = MaterialTheme.typography.bodySmall, color = color, modifier = modifier)
 }
 
 /** The last screenshot, framed like the phone it came from. */
 @Composable
 internal fun PhoneFrame(run: RunState) {
     val colors = MaterialTheme.colorScheme
+    val bitmap = run.screen
     Box(
         Modifier
-            .size(width = 84.dp, height = 168.dp)
+            .width(84.dp)
+            .aspectRatio(bitmap?.let { (it.width / it.height.toFloat()).coerceIn(0.4f, 1f) } ?: 0.46f)
             .clip(RoundedCornerShape(12.dp))
-            .background(colors.surfaceContainerHighest)
-            .border(2.dp, colors.outlineVariant, RoundedCornerShape(12.dp)),
+            .background(colors.surfaceContainerHigh)
+            .border(1.dp, colors.outlineVariant, RoundedCornerShape(12.dp)),
         contentAlignment = Alignment.Center,
     ) {
-        val bitmap = run.screen
         if (bitmap != null) {
-            Image(bitmap.asImageBitmap(), "Last screen", modifier = Modifier.fillMaxSize().padding(2.dp).clip(RoundedCornerShape(10.dp)))
+            Image(bitmap.asImageBitmap(), "Last screen", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         } else {
-            Icon(Icons.Outlined.TouchApp, null, tint = colors.onSurfaceVariant.copy(alpha = 0.5f))
+            TouchMark(size = 28.dp, color = colors.onSurfaceVariant.copy(alpha = 0.4f))
         }
     }
 }
 
+/**
+ * One line of the step log, hung on a rail that runs down the sheet. Actions are the agent's
+ * touches, so they get the touch dot and a plain-words reading above the raw call.
+ */
 @Composable
 internal fun LogRow(line: LogLine) {
     val colors = MaterialTheme.colorScheme
-    val (icon, color) = when (line.kind) {
-        LogKind.Info -> Icons.Outlined.Circle to colors.onSurfaceVariant
-        LogKind.Thought -> Icons.Outlined.Lightbulb to colors.onSurfaceVariant
-        LogKind.Action -> Icons.Outlined.TouchApp to colors.primary
-        LogKind.Result -> Icons.AutoMirrored.Outlined.ArrowRightAlt to colors.onSurfaceVariant
-        LogKind.Error -> Icons.Outlined.ErrorOutline to colors.error
-        LogKind.Done -> Icons.Outlined.CheckCircle to colors.success
+    val node = when (line.kind) {
+        LogKind.Action -> colors.tertiary
+        LogKind.Error -> colors.error
+        LogKind.Done -> colors.success
+        else -> colors.outlineVariant
     }
-    val monospace = line.kind == LogKind.Action || line.kind == LogKind.Result
-    Row(Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 3.dp), verticalAlignment = Alignment.Top) {
-        Icon(icon, null, tint = color, modifier = Modifier.padding(top = 2.dp).size(if (line.kind == LogKind.Info) 10.dp else 16.dp).let {
-            if (line.kind == LogKind.Info) it.padding(top = 3.dp) else it
-        })
-        Spacer(Modifier.width(12.dp))
-        Text(
-            line.text,
-            color = if (line.kind == LogKind.Thought) colors.onSurfaceVariant else colors.onSurface.takeIf { line.kind == LogKind.Info } ?: color,
-            style = if (monospace) MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp) else MaterialTheme.typography.bodyMedium,
-        )
+    val rail = colors.outlineVariant.copy(alpha = 0.6f)
+    val mono = MaterialTheme.typography.bodySmall.copy(fontFamily = Mono, fontSize = 11.5.sp, lineHeight = 16.sp)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .drawBehind {
+                val x = 30.dp.toPx()
+                drawLine(rail, Offset(x, 0f), Offset(x, size.height), strokeWidth = 1.dp.toPx())
+                val big = line.kind == LogKind.Action || line.kind == LogKind.Error || line.kind == LogKind.Done
+                drawCircle(node, radius = (if (big) 4.5f else 2.5f).dp.toPx(), center = Offset(x, 15.dp.toPx()))
+            }
+            .padding(start = 52.dp, end = 20.dp, top = 5.dp, bottom = 5.dp),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            when (line.kind) {
+                LogKind.Action -> {
+                    Text(LiveNotification.describe(line.text), style = MaterialTheme.typography.titleSmall, color = colors.onSurface)
+                    Text(line.text, style = mono, color = colors.onSurfaceVariant, maxLines = 4, overflow = TextOverflow.Ellipsis)
+                }
+                LogKind.Result -> Text(line.text, style = mono, color = colors.onSurfaceVariant, maxLines = 6, overflow = TextOverflow.Ellipsis)
+                LogKind.Thought -> Text(line.text, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
+                LogKind.Info -> Text(line.text, style = MaterialTheme.typography.bodyMedium, color = colors.onSurface)
+                LogKind.Error -> Text(line.text, style = MaterialTheme.typography.bodyMedium, color = colors.error)
+                LogKind.Done -> Text(line.text, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold), color = colors.success)
+            }
+        }
     }
 }
 
+/** A sensitive action waiting for a yes or no. */
 @Composable
 internal fun ApprovalCard(request: ApprovalRequest) {
     val colors = MaterialTheme.colorScheme
-    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = colors.errorContainer), shape = MaterialTheme.shapes.large) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Approval needed", style = MaterialTheme.typography.labelLarge, color = colors.onErrorContainer.copy(alpha = 0.75f))
-            Text(request.title, style = MaterialTheme.typography.titleMedium, color = colors.onErrorContainer)
-            Text(request.detail, style = MaterialTheme.typography.bodyMedium, color = colors.onErrorContainer)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Surface(Modifier.fillMaxWidth(), color = colors.card, shape = MaterialTheme.shapes.large, border = BorderStroke(1.5.dp, colors.error.copy(alpha = 0.7f))) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Eyebrow("Approval needed", color = colors.error)
+            Text(request.title, style = MaterialTheme.typography.titleMedium, color = colors.onSurface)
+            Text(request.detail, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
+            Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { Approvals.answer(request.id, true) }) { Text("Approve") }
                 OutlinedButton(onClick = { Approvals.answer(request.id, false) }) { Text("Deny") }
             }
@@ -189,23 +194,21 @@ internal fun openInBrowser(context: Context, url: String) {
 @Composable
 internal fun SetupCard(shizuku: ShizukuState, tokens: CodexTokens?) {
     val colors = MaterialTheme.colorScheme
-    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = colors.primaryContainer), shape = MaterialTheme.shapes.large) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("Two things before the first task", style = MaterialTheme.typography.titleMedium, color = colors.onPrimaryContainer)
+    val done = listOf(shizuku == ShizukuState.Ready, tokens != null).count { it }
+    Surface(Modifier.fillMaxWidth(), color = colors.card, shape = MaterialTheme.shapes.large, border = hairline()) {
+        Column {
+            Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Eyebrow("Setup · $done of 2 done", color = colors.primary)
+                Text("Two things before the first task", style = MaterialTheme.typography.titleLarge, color = colors.onSurface)
                 Text(
                     "Shizuku lets the agent touch the screen. Your ChatGPT plan is the model.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = colors.onPrimaryContainer.copy(alpha = 0.8f),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.onSurfaceVariant,
                 )
             }
-            Surface(shape = MaterialTheme.shapes.medium, color = colors.surface) {
-                Column {
-                    ShizukuStep(shizuku)
-                    HorizontalDivider(color = colors.outlineVariant.copy(alpha = 0.5f))
-                    SignInStep(tokens)
-                }
-            }
+            ShizukuStep(shizuku)
+            HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = colors.hairline)
+            SignInStep(tokens)
         }
     }
 }
@@ -213,7 +216,7 @@ internal fun SetupCard(shizuku: ShizukuState, tokens: CodexTokens?) {
 @Composable
 internal fun StepRow(done: Boolean, title: String, status: String, actions: (@Composable () -> Unit)? = null) {
     val colors = MaterialTheme.colorScheme
-    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 if (done) Icons.Outlined.CheckCircle else Icons.Outlined.Circle,
@@ -298,45 +301,51 @@ internal fun SignInStep(tokens: CodexTokens?) {
             it,
             style = MaterialTheme.typography.bodySmall,
             color = if ("failed" in it || "Couldn't" in it) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 12.dp),
+            modifier = Modifier.padding(start = 50.dp, end = 16.dp, bottom = 14.dp),
         )
     }
 }
 
-/** Who is signed in and how much of the ChatGPT plan is left for Codex. */
+/** Who is signed in, how much of the ChatGPT plan is left for Codex, and whether Shizuku is up. */
 @Composable
-internal fun AccountCard(tokens: CodexTokens) {
+internal fun AccountCard(tokens: CodexTokens, shizukuReady: Boolean) {
     val colors = MaterialTheme.colorScheme
     val usage by CodexUsageStore.usage.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var refreshing by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { CodexUsageStore.refresh() }
-    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = colors.surfaceContainer), shape = MaterialTheme.shapes.large) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Surface(Modifier.fillMaxWidth(), color = colors.card, shape = MaterialTheme.shapes.large, border = hairline()) {
+        Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Codex usage", style = MaterialTheme.typography.titleMedium)
-                    Hint(listOfNotNull(tokens.email, tokens.plan?.let { "${it.replaceFirstChar(Char::uppercase)} plan" }).joinToString(" · "))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Eyebrow(tokens.plan?.let { "$it plan" } ?: "ChatGPT")
+                    Text(tokens.email ?: "Signed in", style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 TextButton(
                     onClick = { scope.launch { refreshing = true; CodexUsageStore.refresh(); refreshing = false } },
                     enabled = !refreshing,
                 ) { Text(if (refreshing) "Refreshing…" else "Refresh") }
             }
-            val current = usage
-            if (current == null) {
-                Hint("Not loaded yet.")
-            } else {
-                listOfNotNull(current.primary, current.secondary).forEach { window -> UsageBar(window) }
-                if (current.limitReached) Hint("Limit reached. Tasks will fail until it resets.", color = colors.error)
+            Column(Modifier.padding(end = 8.dp, top = 10.dp, bottom = 6.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                val current = usage
+                if (current == null) {
+                    Hint("Usage hasn't loaded yet.")
+                } else {
+                    listOfNotNull(current.primary, current.secondary).forEach { window -> UsageBar(window) }
+                    if (current.limitReached) Hint("Limit reached. Tasks will fail until it resets.", color = colors.error)
+                }
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(8.dp).background(if (shizukuReady) colors.success else colors.error, CircleShape))
+                Spacer(Modifier.width(8.dp))
+                Hint(if (shizukuReady) "Shizuku connected" else "Shizuku not connected", modifier = Modifier.weight(1f))
                 TextButton(onClick = { CodexAuth.signOut(); CodexUsageStore.clear() }) { Text("Sign out") }
             }
         }
     }
 }
 
+/** How much of one usage window is left: the number first, the bar as its picture. */
 @Composable
 internal fun UsageBar(window: UsageWindow) {
     val colors = MaterialTheme.colorScheme
@@ -345,27 +354,17 @@ internal fun UsageBar(window: UsageWindow) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.Bottom) {
             Text(if (window.label == "Weekly") "This week" else "Next ${window.label}", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-            Text("${window.leftPercent}% left", style = MaterialTheme.typography.titleSmall, color = tint)
-            Spacer(Modifier.width(8.dp))
-            Hint("resets in ${window.resetsIn()}")
+            Text("${window.leftPercent}% left", style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.sp), color = tint)
+            Text(" · resets in ${window.resetsIn()}", style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.sp), color = colors.onSurfaceVariant)
         }
         LinearProgressIndicator(
             progress = { window.leftPercent / 100f },
-            modifier = Modifier.fillMaxWidth().height(8.dp).clip(CircleShape),
+            modifier = Modifier.fillMaxWidth().height(6.dp).clip(CircleShape),
             color = tint,
-            trackColor = colors.surfaceContainerHighest,
+            trackColor = colors.surfaceContainerHigh,
+            gapSize = 0.dp,
             drawStopIndicator = {},
         )
-    }
-}
-
-@Composable
-internal fun ShizukuChip() {
-    val colors = MaterialTheme.colorScheme
-    Row(Modifier.padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(8.dp).background(colors.success, CircleShape))
-        Spacer(Modifier.width(10.dp))
-        Hint("Shizuku connected")
     }
 }
 
@@ -412,9 +411,13 @@ internal fun AssistantCard(shizuku: ShizukuState) {
             powerOpens = powerOpensAssistant(context)
         }
     }
-    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = colors.surfaceContainer), shape = MaterialTheme.shapes.large) {
+    Surface(Modifier.fillMaxWidth(), color = colors.card, shape = MaterialTheme.shapes.large, border = hairline()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            CardTitle("Assistant", Icons.Outlined.AutoAwesome) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Eyebrow(if (isDefault) "Default assistant" else "Assistant", color = if (isDefault) colors.success else colors.onSurfaceVariant)
+                    Text("Over any app", style = MaterialTheme.typography.titleMedium)
+                }
                 TextButton(onClick = { context.startActivity(AssistantActivity.intent(context).putExtra(AssistantActivity.EXTRA_RESUMED, false)) }) {
                     Text("Try it")
                 }
@@ -423,9 +426,10 @@ internal fun AssistantCard(shizuku: ShizukuState) {
                 if (isDefault) "Long-press Home to chat or ask for something over any app."
                 else "Replace Gemini: open Android Use over any app with long-press Home.",
                 style = MaterialTheme.typography.bodyMedium,
+                color = colors.onSurfaceVariant,
             )
             if (!isDefault) {
-                FilledTonalButton(onClick = {
+                Button(onClick = {
                     scope.launch {
                         val role = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && shizuku == ShizukuState.Ready) {
                             runCatching {

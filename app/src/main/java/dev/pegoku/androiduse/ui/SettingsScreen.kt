@@ -10,8 +10,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -30,6 +28,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
@@ -57,8 +56,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.KeyboardType
+import android.os.Build
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.pegoku.androiduse.Settings
 import dev.pegoku.androiduse.agent.Guard
@@ -72,21 +72,22 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
-/** Full-screen settings: models, agent limits, safety, reporting and the agent's memory. */
+/** Full-screen settings: account and setup, models, agent limits, safety, reporting, looks and the agent's memory. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(settings: Settings, onBack: () -> Unit) {
-    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     val shizuku by ShizukuShell.state.collectAsStateWithLifecycle()
     val tokens by CodexAuth.tokens.collectAsStateWithLifecycle()
+    val page = MaterialTheme.colorScheme.background
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Settings") },
+                title = { Text("Settings", style = MaterialTheme.typography.titleLarge) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
-                scrollBehavior = scrollBehavior,
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = page, scrolledContainerColor = page),
             )
         },
+        containerColor = page,
         modifier = Modifier.fillMaxSize(),
     ) { padding ->
         LazyColumn(
@@ -96,34 +97,50 @@ fun SettingsScreen(settings: Settings, onBack: () -> Unit) {
             item {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     if (shizuku != ShizukuState.Ready || tokens == null) SetupCard(shizuku, tokens)
-                    tokens?.let { AccountCard(it) }
-                    if (shizuku == ShizukuState.Ready) ShizukuChip()
+                    tokens?.let { AccountCard(it, shizukuReady = shizuku == ShizukuState.Ready) }
                     AssistantCard(shizuku)
                 }
             }
-            item { DiagnosticsSection() }
             item { ModelsSection(settings) }
             item { AgentSection(settings) }
             item { SafetySection(settings) }
             item { ReportingSection(settings) }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) item { AppearanceSection() }
             item { MemorySection() }
+            item { DiagnosticsSection() }
             item { Spacer(Modifier.height(32.dp)) }
         }
     }
 }
 
+/** A titled group of settings on one card. */
 @Composable
-private fun Section(title: String, description: String? = null, last: Boolean = false, content: @Composable () -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+private fun Section(title: String, description: String? = null, content: @Composable () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, color = colors.onSurface)
             if (description != null) {
-                Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(description, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
             }
         }
-        content()
+        Surface(Modifier.fillMaxWidth(), color = colors.card, shape = MaterialTheme.shapes.large, border = hairline()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) { content() }
+        }
     }
-    if (!last) HorizontalDivider(Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+}
+
+@Composable
+private fun AppearanceSection() {
+    val context = LocalContext.current
+    Section("Appearance") {
+        SwitchRow(
+            title = "Match wallpaper colors",
+            description = "Take the colors from your wallpaper instead of Android Use's own.",
+            checked = Appearance.wallpaperColors,
+            onCheckedChange = { Appearance.setWallpaperColors(context, it) },
+        )
+    }
 }
 
 @Composable
@@ -226,7 +243,7 @@ private fun AgentSection(settings: Settings) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Max steps per task", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                Text(maxSteps.roundToInt().toString(), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                Text(maxSteps.roundToInt().toString(), style = MaterialTheme.typography.labelSmall.copy(fontSize = 15.sp), color = MaterialTheme.colorScheme.primary)
             }
             Slider(
                 value = maxSteps,
@@ -315,7 +332,6 @@ private fun MemorySection() {
     Section(
         "Memory",
         "Things the agent learned: where settings live, how a task is done, what you told it. Every task and chat sees all of it.",
-        last = true,
     ) {
         OutlinedTextField(
             value = newMemory,
@@ -334,15 +350,13 @@ private fun MemorySection() {
                 Hint("Nothing yet. Tasks save what worked, and what you tell them, for next time.")
             }
         } else {
-            Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainer) {
-                Column {
-                    memories.asReversed().forEachIndexed { index, memory ->
-                        if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-                        MemoryRow(memory)
-                    }
+            Column {
+                memories.asReversed().forEachIndexed { index, memory ->
+                    if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.hairline)
+                    MemoryRow(memory)
                 }
             }
-            TextButton(onClick = { confirmClear = true }) { Text("Forget everything", color = MaterialTheme.colorScheme.error) }
+            OutlinedButton(onClick = { confirmClear = true }) { Text("Forget everything", color = MaterialTheme.colorScheme.error) }
         }
     }
     if (confirmClear) {
@@ -360,7 +374,7 @@ private fun MemorySection() {
 private fun MemoryRow(memory: Memory) {
     var editing by remember(memory.id) { mutableStateOf(false) }
     var text by remember(memory.id) { mutableStateOf(memory.text) }
-    Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp)) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
         if (editing) {
             OutlinedTextField(value = text, onValueChange = { text = it }, modifier = Modifier.fillMaxWidth().padding(end = 12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(top = 4.dp)) {
@@ -370,7 +384,7 @@ private fun MemoryRow(memory: Memory) {
         } else {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    memory.app?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary) }
+                    memory.app?.let { Eyebrow(it, color = MaterialTheme.colorScheme.primary) }
                     Text(memory.text, style = MaterialTheme.typography.bodyMedium)
                 }
                 IconButton(onClick = { editing = true }) { Icon(Icons.Default.Edit, "Edit", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -402,7 +416,7 @@ private fun DiagnosticsSection() {
     }
     Section("Diagnostics", "Export saved chats and the last 30 action traces to analyze delays and navigation loops.") {
         Hint("Includes private chat text, screen text and action arguments. Review before sharing. Detailed traces are only available for new runs.")
-        Button(enabled = !exporting, onClick = { launcher.launch("android-use-diagnostics-${System.currentTimeMillis()}.zip") }) {
+        OutlinedButton(enabled = !exporting, onClick = { launcher.launch("android-use-diagnostics-${System.currentTimeMillis()}.zip") }) {
             Text(if (exporting) "Exporting…" else "Export chats and actions")
         }
         result?.let { Hint(it) }
