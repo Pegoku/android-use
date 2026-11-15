@@ -51,8 +51,8 @@ Android Use opens as a chat, like the Gemini and ChatGPT apps. Ask a question or
 on the phone from the same input; the assistant answers directly or hands the task to the agent,
 and the task's progress and outcome show inline in the conversation. The drawer (menu icon) lists
 your recent chats and starts new ones; the avatar opens Settings, which also holds the setup
-steps, Codex usage and the assistant options. While a task runs, the list icon in the top bar
-shows the agent's step log and the phone's last screen.
+steps, Codex usage and the assistant options. A task shows up in the chat as a card with the step
+it is on and the phone's screen; **Steps** on that card opens the agent's full step log.
 
 Attach pictures and files with the paperclip, or share them to Android Use from another app.
 Pictures and PDF pages go to the model as images and text files as text. Other files are passed by
@@ -103,7 +103,8 @@ While a task runs, its progress shows in an ongoing notification. On Android 16 
 **Live Update**: a pill in the status bar shows the step and how much Codex usage is left (for
 example `S4 · 70%`). Tap the pill to expand it: you see the task, the current action, a thumbnail
 of the screen, both usage limits, and a **Stop** button. The app's Codex card shows the 5-hour and
-weekly limits with their reset times. The app follows the system's light or dark theme.
+weekly limits with their reset times. The app follows the system's light or dark theme with its own
+colors; **Settings > Appearance** switches to the wallpaper's colors instead.
 
 The phone must be unlocked while a task runs. The agent presses Home, then works in the foreground.
 Tap **Stop** in the app or in the notification to abort.
@@ -187,6 +188,8 @@ clipboard paste.
 ## License
 
 [GPL-3.0](LICENSE). Shizuku and the other dependencies use compatible licenses (Apache-2.0).
+The bundled typefaces (Bricolage Grotesque, Instrument Sans, JetBrains Mono) are under the
+[SIL Open Font License 1.1](https://openfontlicense.org).
 
 ## Exporting action traces
 
